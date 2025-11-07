@@ -62,13 +62,32 @@ namespace IELTS_Learning_Tool
                 Console.ResetColor();
 
                 Console.Write("\nYour translation: ");
-                word.UserTranslation = Console.ReadLine()?.Trim() ?? "";
+                string userInput = Console.ReadLine()?.Trim() ?? "";
+                if (userInput.Equals("Pass", StringComparison.OrdinalIgnoreCase))
+                {
+                    word.IsSkipped = true;
+                    Console.WriteLine("Question skipped.");
+                }
+                else
+                {
+                    word.UserTranslation = userInput;
+                }
                 
                 Console.WriteLine("----------------------------------------------------\n");
             }
 
             Console.WriteLine("\nAll translations are complete. Evaluating your answers... Please wait.");
             List<VocabularyWord> evaluatedWords = await geminiService.EvaluateTranslationsAsync(words);
+
+            foreach (var word in evaluatedWords)
+            {
+                if (word.IsSkipped)
+                {
+                    word.Score = 0;
+                    word.Explanation = "(User skipped) " + word.Explanation;
+                }
+            }
+
             Console.WriteLine("Evaluation complete. Generating HTML report...");
 
             GenerateHtmlReport(evaluatedWords);
@@ -121,7 +140,7 @@ namespace IELTS_Learning_Tool
             {
                 sb.AppendLine("                <tr>");
                 sb.AppendLine($"                    <td><div class='details'><strong>{word.Word}</strong> ({word.Phonetics})</div>{word.Sentence}</td>");
-                sb.AppendLine($"                    <td>{word.UserTranslation}</td>");
+                sb.AppendLine($"                    <td>{(word.IsSkipped ? "Skipped" : word.UserTranslation)}</td>");
                 sb.AppendLine($"                    <td><div>{word.CorrectedTranslation}</div><div class='details'>{word.Explanation}</div></td>");
                 
                 string scoreColor = word.Score >= 8 ? "score-high" : word.Score >= 5 ? "score-medium" : "score-low";

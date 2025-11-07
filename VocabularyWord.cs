@@ -10,5 +10,6 @@ namespace IELTS_Learning_Tool
         public int Score { get; set; }
         public string CorrectedTranslation { get; set; } = "";
         public string Explanation { get; set; } = "";
+        public bool IsSkipped { get; set; }
     }
 }

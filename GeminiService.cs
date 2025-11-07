@@ -88,8 +88,8 @@ namespace IELTS_Learning_Tool
             var topics = new[] { "natural geography", "plant research", "animal protection", "space exploration", "school education", "technological inventions", "cultural history", "language evolution", "entertainment and sports", "materials and substances", "fashion trends", "diet and health", "architecture and places", "transport and travel", "international government", "social economy", "laws and regulations", "battlefield conflicts", "social roles", "behaviors and actions", "body and health", "time and dates" };
             
             var prompt = $@"
-Please provide 20 random IELTS core vocabulary words. Select them from the following topics: {string.Join(", ", topics)}.
-For each word, provide its phonetics, its English definition, and an example sentence.
+Please provide 2 random IELTS core vocabulary words. Select them from the following topics: {string.Join(", ", topics)}.
+For each word, provide its phonetics, its Chinese definition (including part of speech and comprehensive meaning), and an example sentence.
 Return the response as a valid JSON array. Each object in the array should have the following keys: ""word"", ""phonetics"", ""definition"", ""sentence"".
 
 Example format:
@@ -97,7 +97,7 @@ Example format:
   {{
     ""word"": ""ubiquitous"",
     ""phonetics"": ""/juːˈbɪkwɪtəs/"",
-    ""definition"": ""Present, appearing, or found everywhere."",
+    ""definition"": ""adj. 普遍存在的；无所不在的"",
     ""sentence"": ""The company's logo has become ubiquitous all over the world.""
   }},
   ...
