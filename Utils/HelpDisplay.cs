@@ -12,7 +12,7 @@ namespace IELTS_Learning_Tool.Utils
             Console.WriteLine("  IELTS-Learning-Tool [选项]");
             Console.WriteLine();
             Console.WriteLine("选项:");
-            Console.WriteLine("  --words, -w           单词学习模式（默认模式）");
+            Console.WriteLine("  --words, -w           单词学习模式");
             Console.WriteLine("                         从配置的主题中随机选择单词，提供翻译练习");
             Console.WriteLine();
             Console.WriteLine("  --article, -a         每日文章模式");
@@ -20,6 +20,8 @@ namespace IELTS_Learning_Tool.Utils
             Console.WriteLine("                         包含全文翻译和重点词汇解释");
             Console.WriteLine();
             Console.WriteLine("  --help, -h            显示此帮助信息");
+            Console.WriteLine();
+            Console.WriteLine("注意: 必须指定一个模式参数才能运行程序。");
             Console.WriteLine();
             Console.WriteLine("示例:");
             Console.WriteLine("  IELTS-Learning-Tool --words      # 运行单词学习模式");

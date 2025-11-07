@@ -4,10 +4,10 @@ namespace IELTS_Learning_Tool.Utils
     {
         public static string ParseArguments(string[] args)
         {
-            // 如果没有参数，默认返回 words 模式
+            // 如果没有参数，显示帮助信息
             if (args.Length == 0)
             {
-                return "words";
+                return "help";
             }
 
             // 解析参数
