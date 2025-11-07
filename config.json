@@ -1,5 +1,5 @@
 {
-  "GoogleApiKey": "AIzaSyC49faPeRNbrluehJpHGf16WAztetqIyVE",
+  "GoogleApiKey": "YOUR_GOOGLE_GEMINI_API_KEY",
   "WordCount": 20,
   "Topics": [
     "natural geography",
