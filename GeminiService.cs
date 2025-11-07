@@ -13,9 +13,9 @@ namespace IELTS_Learning_Tool
         private readonly HttpClient _httpClient;
         private readonly string _apiKey;
 
-        public GeminiService(string apiKey)
+        public GeminiService(AppConfig config)
         {
-            _apiKey = apiKey;
+            _apiKey = config.GoogleApiKey;
             _httpClient = new HttpClient();
             _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         }
@@ -83,12 +83,10 @@ namespace IELTS_Learning_Tool
             }
         }
 
-        public async Task<List<VocabularyWord>> GetIeltsWordsAsync()
+        public async Task<List<VocabularyWord>> GetIeltsWordsAsync(int wordCount, List<string> topics)
         {
-            var topics = new[] { "natural geography", "plant research", "animal protection", "space exploration", "school education", "technological inventions", "cultural history", "language evolution", "entertainment and sports", "materials and substances", "fashion trends", "diet and health", "architecture and places", "transport and travel", "international government", "social economy", "laws and regulations", "battlefield conflicts", "social roles", "behaviors and actions", "body and health", "time and dates" };
-            
             var prompt = $@"
-Please provide 2 random IELTS core vocabulary words. Select them from the following topics: {string.Join(", ", topics)}.
+Please provide {wordCount} random IELTS core vocabulary words. Select them from the following topics: {string.Join(", ", topics)}.
 For each word, provide its phonetics, its Chinese definition (including part of speech and comprehensive meaning), and an example sentence.
 Return the response as a valid JSON array. Each object in the array should have the following keys: ""word"", ""phonetics"", ""definition"", ""sentence"".
 
@@ -184,6 +182,119 @@ Example output format:
                 Console.WriteLine($"Raw response was: {response}");
                 return words;
             }
+        }
+
+        public async Task<Article> GetDailyArticleAsync(List<string> topics, int keyWordsCount)
+        {
+            // 随机选择一个主题
+            var random = new Random();
+            string selectedTopic = topics[random.Next(topics.Count)];
+
+            // 生成文章的 prompt
+            var articlePrompt = $@"
+Please write a comprehensive IELTS-level English article about the topic: ""{selectedTopic}"".
+Requirements:
+1. The article should be 500-1000 words long.
+2. The article should have a clear title.
+3. The article should be well-structured with paragraphs.
+4. Use appropriate IELTS-level vocabulary and expressions.
+5. The content should be informative and engaging.
+
+Return the response as a valid JSON object with the following keys:
+- ""title"": the article title (in English)
+- ""content"": the full article text (in English, preserve paragraph breaks with \n)
+
+Example format:
+{{
+  ""title"": ""The Impact of Climate Change on Natural Geography"",
+  ""content"": ""Climate change has become one of the most pressing issues of our time...\n\nFurthermore, rising sea levels...\n\nIn conclusion...""
+}}";
+
+            string articleResponse = await CallGeminiApiAsync(articlePrompt);
+
+            Article article = new Article { Topic = selectedTopic };
+
+            if (articleResponse.StartsWith("Error:"))
+            {
+                Console.WriteLine(articleResponse);
+                return article;
+            }
+
+            try
+            {
+                var cleanedJson = articleResponse.Trim().Replace("```json", "").Replace("```", "");
+                using (JsonDocument doc = JsonDocument.Parse(cleanedJson))
+                {
+                    JsonElement root = doc.RootElement;
+                    article.Title = root.GetProperty("title").GetString() ?? "";
+                    article.Content = root.GetProperty("content").GetString() ?? "";
+                }
+            }
+            catch (JsonException ex)
+            {
+                Console.WriteLine($"Failed to deserialize article JSON: {ex.Message}");
+                Console.WriteLine($"Raw response was: {articleResponse}");
+                return article;
+            }
+
+            // 如果没有成功获取文章，直接返回
+            if (string.IsNullOrWhiteSpace(article.Content))
+            {
+                return article;
+            }
+
+            // 生成中文翻译
+            var translationPrompt = $@"
+Please translate the following English article into Chinese. 
+Preserve the paragraph structure and formatting.
+Return only the Chinese translation, without any additional text or formatting.
+
+Article:
+{article.Content}";
+
+            string translationResponse = await CallGeminiApiAsync(translationPrompt);
+            if (!translationResponse.StartsWith("Error:"))
+            {
+                article.Translation = translationResponse.Trim();
+            }
+
+            // 提取重点词汇
+            var keyWordsPrompt = $@"
+Please extract {keyWordsCount} key vocabulary words from the following article that are important for IELTS learners.
+For each word, provide its phonetics, its Chinese definition (including part of speech and comprehensive meaning), and an example sentence from the article or a similar context.
+Return the response as a valid JSON array. Each object in the array should have the following keys: ""word"", ""phonetics"", ""definition"", ""sentence"".
+
+Article:
+{article.Content}
+
+Example format:
+[
+  {{
+    ""word"": ""ubiquitous"",
+    ""phonetics"": ""/juːˈbɪkwɪtəs/"",
+    ""definition"": ""adj. 普遍存在的；无所不在的"",
+    ""sentence"": ""The company's logo has become ubiquitous all over the world.""
+  }},
+  ...
+]";
+
+            string keyWordsResponse = await CallGeminiApiAsync(keyWordsPrompt);
+            if (!keyWordsResponse.StartsWith("Error:"))
+            {
+                try
+                {
+                    var cleanedJson = keyWordsResponse.Trim().Replace("```json", "").Replace("```", "");
+                    var words = JsonSerializer.Deserialize<List<VocabularyWord>>(cleanedJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    article.KeyWords = words ?? new List<VocabularyWord>();
+                }
+                catch (JsonException ex)
+                {
+                    Console.WriteLine($"Failed to deserialize key words JSON: {ex.Message}");
+                    Console.WriteLine($"Raw response was: {keyWordsResponse}");
+                }
+            }
+
+            return article;
         }
     }
 }

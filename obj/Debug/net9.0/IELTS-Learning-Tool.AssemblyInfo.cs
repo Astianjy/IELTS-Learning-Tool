@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("IELTS-Learning-Tool")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+67c9f3777970fee363c76169497dac1025635642")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1a8edf8199f8391f1d973efd31c53804ff723c29")]
 [assembly: System.Reflection.AssemblyProductAttribute("IELTS-Learning-Tool")]
 [assembly: System.Reflection.AssemblyTitleAttribute("IELTS-Learning-Tool")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
