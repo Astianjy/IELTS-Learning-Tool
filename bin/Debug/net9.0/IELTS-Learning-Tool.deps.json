@@ -1,0 +1,23 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v9.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v9.0": {
+      "IELTS-Learning-Tool/1.0.0": {
+        "runtime": {
+          "IELTS-Learning-Tool.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "IELTS-Learning-Tool/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}
