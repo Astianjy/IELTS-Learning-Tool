@@ -12,14 +12,17 @@ namespace IELTS_Learning_Tool.Services
     {
         public static void GenerateWordsReport(List<VocabularyWord> words)
         {
-            // 计算统计数据
-            var answeredWords = words.Where(w => w.UserTranslation != "Pass").ToList();
+            // 辅助方法：判断是否是Pass（包括空字符串）
+            bool IsPass(VocabularyWord w) => string.IsNullOrWhiteSpace(w.UserTranslation) || w.UserTranslation == "Pass";
+            
+            // 计算统计数据（Pass和空字符串都不算已回答）
+            var answeredWords = words.Where(w => !IsPass(w)).ToList();
             var totalScore = answeredWords.Sum(w => w.Score);
             var averageScore = answeredWords.Count > 0 ? (double)totalScore / answeredWords.Count : 0;
-            var passCount = words.Count(w => w.UserTranslation == "Pass");
+            var passCount = words.Count(w => IsPass(w));
             var highScoreCount = answeredWords.Count(w => w.Score >= 8);
             var mediumScoreCount = answeredWords.Count(w => w.Score >= 5 && w.Score < 8);
-            var lowScoreCount = words.Count(w => w.UserTranslation == "Pass" || (w.UserTranslation != "Pass" && w.Score < 5));
+            var lowScoreCount = words.Count(w => IsPass(w) || (!IsPass(w) && w.Score < 5));
 
             var sb = new StringBuilder();
             string today = DateTime.Now.ToString("yyyy-MM-dd");
@@ -94,7 +97,9 @@ namespace IELTS_Learning_Tool.Services
             foreach (var word in words)
             {
                 string scoreColor = word.Score >= 8 ? "score-high" : word.Score >= 5 ? "score-medium" : "score-low";
-                string userTranslationDisplay = word.UserTranslation == "Pass" 
+                // Pass的单词或空字符串在"你的翻译"列显示为Pass
+                bool isPass = string.IsNullOrWhiteSpace(word.UserTranslation) || word.UserTranslation == "Pass";
+                string userTranslationDisplay = isPass
                     ? "<em style='color:#dc3545; font-weight:bold;'>Pass</em>" 
                     : HtmlHelper.EscapeHtml(word.UserTranslation);
                 

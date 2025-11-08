@@ -119,14 +119,17 @@ namespace IELTS_Learning_Tool.Services
                 : DateTime.Now.ToString("yyyy-MM-dd");
             string reportTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 
-            // 计算统计数据（包括所有记录，不再区分IsSkipped）
+            // 辅助方法：判断是否是Pass（包括空字符串）
+            bool IsPass(WordLearningRecord r) => string.IsNullOrWhiteSpace(r.UserTranslation) || r.UserTranslation == "Pass";
+            
+            // 计算统计数据（Pass和空字符串都不算已回答）
             int totalWords = todayRecords.Count;
-            int answeredWords = todayRecords.Count(r => r.UserTranslation != "Pass");
-            int passCount = todayRecords.Count(r => r.UserTranslation == "Pass");
-            double averageScore = todayRecords.Where(r => r.UserTranslation != "Pass").Select(r => r.Score).DefaultIfEmpty(0).Average();
-            int highScoreCount = todayRecords.Count(r => r.UserTranslation != "Pass" && r.Score >= 8);
-            int mediumScoreCount = todayRecords.Count(r => r.UserTranslation != "Pass" && r.Score >= 5 && r.Score < 8);
-            int lowScoreCount = todayRecords.Count(r => r.UserTranslation == "Pass" || (r.UserTranslation != "Pass" && r.Score < 5));
+            int answeredWords = todayRecords.Count(r => !IsPass(r));
+            int passCount = todayRecords.Count(r => IsPass(r));
+            double averageScore = todayRecords.Where(r => !IsPass(r)).Select(r => r.Score).DefaultIfEmpty(0).Average();
+            int highScoreCount = todayRecords.Count(r => !IsPass(r) && r.Score >= 8);
+            int mediumScoreCount = todayRecords.Count(r => !IsPass(r) && r.Score >= 5 && r.Score < 8);
+            int lowScoreCount = todayRecords.Count(r => IsPass(r) || (!IsPass(r) && r.Score < 5));
 
             sb.AppendLine("<!DOCTYPE html>");
             sb.AppendLine("<html lang=\"zh-CN\">");
@@ -199,11 +202,17 @@ namespace IELTS_Learning_Tool.Services
             foreach (var review in reviewWords)
             {
                 string scoreColor = review.Score >= 8 ? "score-high" : review.Score >= 5 ? "score-medium" : "score-low";
+                // Pass的单词或空字符串在"你的翻译"列显示为Pass，而不是空白
+                bool isPass = string.IsNullOrWhiteSpace(review.UserTranslation) || review.UserTranslation == "Pass";
+                string userTranslationDisplay = isPass
+                    ? "<em style='color:#dc3545; font-weight:bold;'>Pass</em>" 
+                    : HtmlHelper.EscapeHtml(review.UserTranslation);
+                
                 sb.AppendLine("                        <tr>");
                 sb.AppendLine($"                            <td class=\"word\">{HtmlHelper.EscapeHtml(review.Word)}</td>");
                 sb.AppendLine($"                            <td>{HtmlHelper.EscapeHtml(review.OriginalSentence)}</td>");
                 sb.AppendLine($"                            <td><span class=\"review-sentence\">{HtmlHelper.EscapeHtml(review.ReviewSentence)}</span></td>");
-                sb.AppendLine($"                            <td>{HtmlHelper.EscapeHtml(review.UserTranslation)}</td>");
+                sb.AppendLine($"                            <td>{userTranslationDisplay}</td>");
                 sb.AppendLine($"                            <td>{HtmlHelper.EscapeHtml(review.CorrectedTranslation)}</td>");
                 sb.AppendLine($"                            <td class=\"score {scoreColor}\">{review.Score}/10</td>");
                 sb.AppendLine("                        </tr>");

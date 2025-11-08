@@ -298,10 +298,9 @@ namespace IELTS_Learning_Tool
                 if (userInput.Equals("Pass", StringComparison.OrdinalIgnoreCase))
                 {
                     // Pass视为不会，设置Score=0，但仍然记录（不标记为跳过）
+                    // 正确的翻译会在后面通过API获取
                     word.UserTranslation = "Pass";
                     word.Score = 0;
-                    word.CorrectedTranslation = "（未作答，标记为不会）";
-                    word.Explanation = "该单词被标记为不会，需要重点复习。";
                     Console.ForegroundColor = ConsoleColor.Red;
                     Console.WriteLine("Question marked as not known (Score: 0).");
                     Console.ResetColor();
@@ -315,8 +314,12 @@ namespace IELTS_Learning_Tool
             }
 
             Console.WriteLine("\nAll translations are complete. Evaluating your answers... Please wait.");
-            // 只评估非Pass的单词
-            var wordsToEvaluate = words.Where(w => w.UserTranslation != "Pass").ToList();
+            
+            // 辅助方法：判断是否是Pass（包括空字符串）
+            bool IsPass(VocabularyWord w) => string.IsNullOrWhiteSpace(w.UserTranslation) || w.UserTranslation == "Pass";
+            
+            // 评估非Pass的单词
+            var wordsToEvaluate = words.Where(w => !IsPass(w)).ToList();
             if (wordsToEvaluate.Count > 0)
             {
                 List<VocabularyWord> evaluatedWords = await geminiService.EvaluateTranslationsAsync(wordsToEvaluate);
@@ -324,7 +327,7 @@ namespace IELTS_Learning_Tool
                 int evalIndex = 0;
                 foreach (var word in words)
                 {
-                    if (word.UserTranslation != "Pass" && evalIndex < evaluatedWords.Count)
+                    if (!IsPass(word) && evalIndex < evaluatedWords.Count)
                     {
                         word.Score = evaluatedWords[evalIndex].Score;
                         word.CorrectedTranslation = evaluatedWords[evalIndex].CorrectedTranslation;
@@ -334,7 +337,27 @@ namespace IELTS_Learning_Tool
                 }
             }
             
-            // Pass的单词已经设置了Score=0，不需要额外处理
+            // 为Pass的单词获取正确的翻译
+            var passWords = words.Where(w => IsPass(w)).ToList();
+            if (passWords.Count > 0)
+            {
+                Console.WriteLine($"正在为 {passWords.Count} 个Pass的单词获取正确答案...");
+                foreach (var word in passWords)
+                {
+                    try
+                    {
+                        string correctTranslation = await geminiService.GetCorrectTranslationAsync(word.Sentence);
+                        word.CorrectedTranslation = correctTranslation;
+                        word.Explanation = "该单词被标记为不会，需要重点复习。";
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"为单词 {word.Word} 获取翻译失败: {ex.Message}");
+                        word.CorrectedTranslation = "（无法获取翻译）";
+                        word.Explanation = "该单词被标记为不会，需要重点复习。";
+                    }
+                }
+            }
 
             Console.WriteLine("Evaluation complete. Generating HTML report...");
 

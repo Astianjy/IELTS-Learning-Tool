@@ -455,6 +455,30 @@ Example output format:
             }
         }
 
+        /// <summary>
+        /// 为Pass的单词获取正确的翻译（不评分）
+        /// </summary>
+        public async Task<string> GetCorrectTranslationAsync(string sentence)
+        {
+            var prompt = $@"
+Please provide a correct and natural Chinese translation for the following English sentence.
+Return only the Chinese translation, without any additional text, explanation, or formatting.
+
+English sentence:
+{sentence}
+
+Chinese translation:";
+
+            string response = await CallGeminiApiAsync(prompt);
+            
+            if (response.StartsWith("Error:"))
+            {
+                return "（无法获取翻译）";
+            }
+            
+            return TextCleaner.RemoveMarkdownFormatting(response.Trim());
+        }
+
         public async Task<Article> GetDailyArticleAsync(List<string> topics, int keyWordsCount, ArticleGenerationProgress? progress = null)
         {
             // 随机选择一个主题
