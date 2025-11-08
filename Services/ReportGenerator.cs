@@ -10,6 +10,18 @@ namespace IELTS_Learning_Tool.Services
 {
     public static class ReportGenerator
     {
+        /// <summary>
+        /// 获取报告目录路径，如果不存在则创建
+        /// </summary>
+        private static string GetReportsDirectory()
+        {
+            string reportsDir = Path.Combine(Directory.GetCurrentDirectory(), "reports");
+            if (!Directory.Exists(reportsDir))
+            {
+                Directory.CreateDirectory(reportsDir);
+            }
+            return reportsDir;
+        }
         public static void GenerateWordsReport(List<VocabularyWord> words)
         {
             // 辅助方法：判断是否是Pass（包括空字符串）
@@ -124,13 +136,14 @@ namespace IELTS_Learning_Tool.Services
             sb.AppendLine("</html>");
             
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-            string fileName = $"IELTS_Report_{timestamp}.html";
+            string reportsDir = GetReportsDirectory();
+            string fileName = Path.Combine(reportsDir, $"IELTS_Report_{timestamp}.html");
             
             // 确保文件名唯一（如果存在则添加序号）
             int counter = 1;
             while (File.Exists(fileName))
             {
-                fileName = $"IELTS_Report_{timestamp}_{counter}.html";
+                fileName = Path.Combine(reportsDir, $"IELTS_Report_{timestamp}_{counter}.html");
                 counter++;
             }
             
@@ -230,13 +243,14 @@ namespace IELTS_Learning_Tool.Services
             sb.AppendLine("</html>");
             
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-            string fileName = $"IELTS_Article_{timestamp}.html";
+            string reportsDir = GetReportsDirectory();
+            string fileName = Path.Combine(reportsDir, $"IELTS_Article_{timestamp}.html");
             
             // 确保文件名唯一（如果存在则添加序号）
             int counter = 1;
             while (File.Exists(fileName))
             {
-                fileName = $"IELTS_Article_{timestamp}_{counter}.html";
+                fileName = Path.Combine(reportsDir, $"IELTS_Article_{timestamp}_{counter}.html");
                 counter++;
             }
             

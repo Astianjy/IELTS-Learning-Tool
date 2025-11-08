@@ -213,7 +213,6 @@ namespace IELTS_Learning_Tool
                     return;
                 }
                 
-                Console.WriteLine($"正在生成 {targetDate} 的每日复习报告...");
                 GeminiService? dailyReportGeminiService = null;
                 try
                 {
@@ -382,7 +381,7 @@ namespace IELTS_Learning_Tool
             }
 
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"\n报告已成功生成到项目目录。");
+            Console.WriteLine($"\n报告已成功生成到 reports 目录。");
             Console.ResetColor();
             
             Console.WriteLine("\nThank you for using the IELTS Learning Tool. See you next time!");
@@ -424,7 +423,7 @@ namespace IELTS_Learning_Tool
                 ReportGenerator.GenerateArticleReport(article);
 
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"\n文章报告已成功生成到项目目录。");
+                Console.WriteLine($"\n文章报告已成功生成到 reports 目录。");
                 Console.ResetColor();
                 Console.WriteLine("\nThank you for using the IELTS Learning Tool. See you next time!");
             }

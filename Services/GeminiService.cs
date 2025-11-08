@@ -162,6 +162,87 @@ Example sentence:";
             string cleaned = TextCleaner.CleanSentence(response.Trim());
             return cleaned;
         }
+
+        /// <summary>
+        /// 批量生成复习例句（一次性为多个单词生成）
+        /// </summary>
+        public async Task<Dictionary<string, string>> GenerateReviewSentencesBatchAsync(List<string> words)
+        {
+            var result = new Dictionary<string, string>();
+            
+            if (words == null || words.Count == 0)
+            {
+                return result;
+            }
+
+            var wordsList = string.Join(", ", words.Select(w => $"\"{w}\""));
+            
+            var prompt = $@"
+Please generate NEW, DIFFERENT example sentences for the following IELTS vocabulary words.
+
+For each word, provide a sentence that:
+1. Clearly demonstrates the word's meaning and usage
+2. Is natural and appropriate for IELTS level
+3. Uses American English
+4. Does NOT use markdown formatting (no **, no *, no bold, no italic)
+
+Words: {wordsList}
+
+Return the response as a valid JSON object where each key is a word and each value is the example sentence.
+
+Example format:
+{{
+  ""ubiquitous"": ""The company's logo has become ubiquitous all over the world."",
+  ""mitigate"": ""Governments must take action to mitigate the effects of climate change."",
+  ""erosion"": ""Coastal erosion is a serious problem in many parts of the world.""
+}}
+
+Return the JSON object now:";
+
+            string response = await CallGeminiApiAsync(prompt);
+            
+            if (response.StartsWith("Error:"))
+            {
+                // 如果批量生成失败，为每个单词返回默认值
+                foreach (var word in words)
+                {
+                    result[word] = $"Review the usage of: {word}";
+                }
+                return result;
+            }
+
+            try
+            {
+                var cleanedJson = CleanJsonResponse(response);
+                using (JsonDocument doc = JsonDocument.Parse(cleanedJson))
+                {
+                    JsonElement root = doc.RootElement;
+                    foreach (var word in words)
+                    {
+                        if (root.TryGetProperty(word, out JsonElement sentenceElement))
+                        {
+                            string sentence = sentenceElement.GetString() ?? $"Review the usage of: {word}";
+                            result[word] = TextCleaner.CleanSentence(sentence.Trim());
+                        }
+                        else
+                        {
+                            result[word] = $"Review the usage of: {word}";
+                        }
+                    }
+                }
+            }
+            catch (JsonException ex)
+            {
+                Console.WriteLine($"批量生成复习例句失败: {ex.Message}");
+                // 如果解析失败，为每个单词返回默认值
+                foreach (var word in words)
+                {
+                    result[word] = $"Review the usage of: {word}";
+                }
+            }
+
+            return result;
+        }
         
         public async Task<List<VocabularyWord>> GetIeltsWordsAsync(int wordCount, List<string> topics, int excludeDays = 7)
         {

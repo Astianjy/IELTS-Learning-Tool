@@ -14,6 +14,20 @@ namespace IELTS_Learning_Tool.Services
     /// </summary>
     public static class DailyReportGenerator
     {
+        private static volatile bool _progressComplete = false;
+        
+        /// <summary>
+        /// 获取报告目录路径，如果不存在则创建
+        /// </summary>
+        private static string GetReportsDirectory()
+        {
+            string reportsDir = Path.Combine(Directory.GetCurrentDirectory(), "reports");
+            if (!Directory.Exists(reportsDir))
+            {
+                Directory.CreateDirectory(reportsDir);
+            }
+            return reportsDir;
+        }
         /// <summary>
         /// 生成每日学习报告
         /// </summary>
@@ -27,51 +41,69 @@ namespace IELTS_Learning_Tool.Services
                 return;
             }
 
-            Console.WriteLine("\n正在生成每日复习报告，请稍候...");
-            Console.WriteLine("正在为今天学习的单词生成新的复习例句...");
+            // 重置进度标志
+            _progressComplete = false;
+            
+            // 收集所有需要生成复习例句的单词
+            var wordsToReview = todayRecords
+                .Where(r => !string.IsNullOrWhiteSpace(r.Word))
+                .Select(r => r.Word)
+                .Distinct()
+                .ToList();
 
-            // 为每个单词生成新的复习例句（包括所有记录，不再过滤IsSkipped）
+            if (wordsToReview.Count == 0)
+            {
+                Console.WriteLine("没有需要生成复习例句的单词。");
+                return;
+            }
+
+            // 启动进度显示任务
+            var progressTask = ShowProgressAsync(wordsToReview.Count);
+            
+            // 批量生成复习例句
+            Dictionary<string, string> reviewSentences;
+            try
+            {
+                reviewSentences = await geminiService.GenerateReviewSentencesBatchAsync(wordsToReview);
+                _progressComplete = true;
+                await progressTask;
+                Console.Write("\r✓ 复习例句生成完成，正在生成报告...\n");
+            }
+            catch (Exception ex)
+            {
+                _progressComplete = true;
+                await progressTask;
+                Console.WriteLine($"\n批量生成复习例句失败: {ex.Message}");
+                // 如果批量生成失败，使用原始例句
+                reviewSentences = new Dictionary<string, string>();
+                foreach (var word in wordsToReview)
+                {
+                    reviewSentences[word] = $"Review the usage of: {word}";
+                }
+            }
+
+            // 构建ReviewWord列表
             var reviewWords = new List<ReviewWord>();
-            int processedCount = 0;
-            int totalToProcess = todayRecords.Count(r => !string.IsNullOrWhiteSpace(r.Word));
             foreach (var record in todayRecords)
             {
                 if (!string.IsNullOrWhiteSpace(record.Word))
                 {
-                    processedCount++;
-                    Console.Write($"\r正在生成复习例句 ({processedCount}/{totalToProcess})...");
-                    try
+                    string reviewSentence = reviewSentences.ContainsKey(record.Word)
+                        ? reviewSentences[record.Word]
+                        : record.Sentence; // 如果找不到，使用原始例句
+
+                    reviewWords.Add(new ReviewWord
                     {
-                        // 生成新的复习例句
-                        string newSentence = await GenerateReviewSentenceAsync(geminiService, record.Word);
-                        reviewWords.Add(new ReviewWord
-                        {
-                            Word = record.Word,
-                            Phonetics = "", // 可以从原始记录中获取，这里简化处理
-                            Definition = "", // 可以从原始记录中获取
-                            OriginalSentence = record.Sentence,
-                            ReviewSentence = newSentence,
-                            Score = record.Score,
-                            UserTranslation = record.UserTranslation,
-                            CorrectedTranslation = record.CorrectedTranslation,
-                            Explanation = record.Explanation
-                        });
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"为单词 {record.Word} 生成复习例句失败: {ex.Message}");
-                        // 如果生成失败，使用原始例句
-                        reviewWords.Add(new ReviewWord
-                        {
-                            Word = record.Word,
-                            OriginalSentence = record.Sentence,
-                            ReviewSentence = record.Sentence,
-                            Score = record.Score,
-                            UserTranslation = record.UserTranslation,
-                            CorrectedTranslation = record.CorrectedTranslation,
-                            Explanation = record.Explanation
-                        });
-                    }
+                        Word = record.Word,
+                        Phonetics = "", // 可以从原始记录中获取，这里简化处理
+                        Definition = "", // 可以从原始记录中获取
+                        OriginalSentence = record.Sentence,
+                        ReviewSentence = reviewSentence,
+                        Score = record.Score,
+                        UserTranslation = record.UserTranslation,
+                        CorrectedTranslation = record.CorrectedTranslation,
+                        Explanation = record.Explanation
+                    });
                 }
             }
 
@@ -83,27 +115,12 @@ namespace IELTS_Learning_Tool.Services
             File.WriteAllText(fileName, html, Encoding.UTF8);
             
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"\n每日报告已成功生成: {fileName}");
+            // 显示相对路径（相对于当前目录）
+            string relativePath = Path.GetRelativePath(Directory.GetCurrentDirectory(), fileName);
+            Console.WriteLine($"\n每日报告已成功生成: {relativePath}");
             Console.ResetColor();
         }
 
-        /// <summary>
-        /// 生成复习例句
-        /// </summary>
-        private static async System.Threading.Tasks.Task<string> GenerateReviewSentenceAsync(
-            GeminiService geminiService, 
-            string word)
-        {
-            try
-            {
-                return await geminiService.GenerateReviewSentenceAsync(word);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"生成复习例句失败: {ex.Message}");
-                return $"Review the usage of: {word}";
-            }
-        }
 
         /// <summary>
         /// 生成每日报告HTML
@@ -238,6 +255,7 @@ namespace IELTS_Learning_Tool.Services
         /// </summary>
         private static string GetUniqueFileName(string prefix)
         {
+            string reportsDir = GetReportsDirectory();
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
             int counter = 0;
             string fileName;
@@ -245,12 +263,32 @@ namespace IELTS_Learning_Tool.Services
             do
             {
                 fileName = counter == 0 
-                    ? $"{prefix}_{timestamp}.html"
-                    : $"{prefix}_{timestamp}_{counter}.html";
+                    ? Path.Combine(reportsDir, $"{prefix}_{timestamp}.html")
+                    : Path.Combine(reportsDir, $"{prefix}_{timestamp}_{counter}.html");
                 counter++;
             } while (File.Exists(fileName) && counter < 100);
             
             return fileName;
+        }
+
+        /// <summary>
+        /// 显示进度动画
+        /// </summary>
+        private static async System.Threading.Tasks.Task ShowProgressAsync(int totalWords)
+        {
+            string[] spinner = { "|", "/", "-", "\\" };
+            int spinnerIndex = 0;
+
+            while (!_progressComplete)
+            {
+                string spinnerChar = spinner[spinnerIndex % spinner.Length];
+                Console.Write($"\r[{spinnerChar}] 正在生成 {totalWords} 个单词的复习例句...");
+                spinnerIndex++;
+                await System.Threading.Tasks.Task.Delay(100);
+            }
+            
+            // 清除进度行
+            Console.Write("\r" + new string(' ', Console.WindowWidth) + "\r");
         }
     }
 
