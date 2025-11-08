@@ -143,7 +143,7 @@ Please generate a NEW, DIFFERENT example sentence for the IELTS vocabulary word:
 Requirements:
 1. The sentence must clearly demonstrate the word's meaning and usage
 2. The sentence should be natural and appropriate for IELTS level
-3. Use American English
+3. Use British English
 4. Do NOT use markdown formatting (no **, no *, no bold, no italic)
 5. Return ONLY the sentence, no additional text or explanation
 
@@ -183,7 +183,7 @@ Please generate NEW, DIFFERENT example sentences for the following IELTS vocabul
 For each word, provide a sentence that:
 1. Clearly demonstrates the word's meaning and usage
 2. Is natural and appropriate for IELTS level
-3. Uses American English
+3. Uses British English
 4. Does NOT use markdown formatting (no **, no *, no bold, no italic)
 
 Words: {wordsList}
@@ -244,6 +244,88 @@ Return the JSON object now:";
             return result;
         }
         
+        /// <summary>
+        /// 批量获取单词的完整信息（音标、定义、例句）
+        /// </summary>
+        public async Task<Dictionary<string, VocabularyWord>> GetWordsInfoBatchAsync(List<string> words)
+        {
+            var result = new Dictionary<string, VocabularyWord>(StringComparer.OrdinalIgnoreCase);
+            
+            if (words == null || words.Count == 0)
+            {
+                return result;
+            }
+
+            var wordsList = string.Join(", ", words.Select(w => $"\"{w}\""));
+            
+            var prompt = $@"
+Please provide complete information for the following IELTS vocabulary words.
+
+For each word, provide:
+1. Accurate phonetics in British English pronunciation (IPA format, UK pronunciation)
+2. Chinese definition (including part of speech and comprehensive meaning)
+3. A natural example sentence that clearly demonstrates the word's usage
+
+Words: {wordsList}
+
+Return the response as a valid JSON object where each key is a word and each value is an object with ""phonetics"", ""definition"", and ""sentence"".
+
+Example format:
+{{
+  ""climate"": {{
+    ""phonetics"": ""/ˈklaɪmɪt/"",
+    ""definition"": ""n. 气候；氛围"",
+    ""sentence"": ""The climate in this region is perfect for growing grapes.""
+  }},
+  ""farming"": {{
+    ""phonetics"": ""/ˈfɑːmɪŋ/"",
+    ""definition"": ""n. 农业；耕作"",
+    ""sentence"": ""Modern farming techniques have increased crop yields significantly.""
+  }}
+}}
+
+Return the JSON object now:";
+
+            string response = await CallGeminiApiAsync(prompt);
+            
+            if (response.StartsWith("Error:"))
+            {
+                return result;
+            }
+
+            try
+            {
+                var cleanedJson = CleanJsonResponse(response);
+                using (JsonDocument doc = JsonDocument.Parse(cleanedJson))
+                {
+                    JsonElement root = doc.RootElement;
+                    foreach (var word in words)
+                    {
+                        if (root.TryGetProperty(word, out JsonElement wordElement))
+                        {
+                            var phonetics = wordElement.TryGetProperty("phonetics", out JsonElement p) ? p.GetString() ?? "" : "";
+                            var definition = wordElement.TryGetProperty("definition", out JsonElement d) ? d.GetString() ?? "" : "";
+                            var sentence = wordElement.TryGetProperty("sentence", out JsonElement s) ? s.GetString() ?? "" : "";
+                            
+                            result[word] = new VocabularyWord
+                            {
+                                Word = word,
+                                Phonetics = TextCleaner.RemoveMarkdownFormatting(phonetics),
+                                Definition = TextCleaner.RemoveMarkdownFormatting(definition),
+                                Sentence = TextCleaner.CleanSentence(sentence)
+                            };
+                        }
+                    }
+                }
+            }
+            catch (JsonException ex)
+            {
+                Console.WriteLine($"批量获取单词信息失败: {ex.Message}");
+            }
+
+            return result;
+        }
+
         public async Task<List<VocabularyWord>> GetIeltsWordsAsync(int wordCount, List<string> topics, int excludeDays = 7)
         {
             // 获取指定日期范围内的已使用词汇和例句，避免重复
@@ -383,11 +465,11 @@ CRITICAL REQUIREMENTS:
 3. Ensure diversity in parts of speech (nouns, verbs, adjectives, adverbs, etc.).
 4. Each word must be relevant to the given topics.
 5. For each word, provide:
-   - Accurate phonetics in American English pronunciation (IPA format, US pronunciation)
+   - Accurate phonetics in British English pronunciation (IPA format, UK pronunciation)
    - Chinese definition (including part of speech and comprehensive meaning)
    - A unique, natural example sentence that clearly demonstrates the word's usage
 6. All example sentences must be unique and creative.
-7. Use American English phonetics (US pronunciation) for all words.
+7. Use British English phonetics (UK pronunciation) for all words.
 8. IMPORTANT: Do NOT use markdown formatting (no **, no *, no bold, no italic) in sentences. Use plain text only.
 9. In example sentences, write the vocabulary word naturally without any special formatting or emphasis.
 {antiRepeatContext}
@@ -476,14 +558,33 @@ Return the JSON array now:";
             var evaluationRequest = new List<object>();
             foreach (var word in words)
             {
-                evaluationRequest.Add(new { originalSentence = word.Sentence, userTranslation = word.UserTranslation });
+                evaluationRequest.Add(new 
+                { 
+                    targetWord = word.Word,
+                    originalSentence = word.Sentence, 
+                    userTranslation = word.UserTranslation 
+                });
             }
 
             var prompt = $@"
 Please evaluate the following list of Chinese translations for the given English sentences.
-For each sentence, provide a score from 1 to 10, a corrected Chinese translation, and a brief explanation for the score.
-The input is a JSON array of objects, each containing the original sentence and the user's translation.
-Return a valid JSON array of objects as your response. Each object in the array must have the following keys: ""score"", ""correctedTranslation"", ""explanation"".
+For each sentence, provide:
+1. A score from 1 to 10 for the overall translation quality
+2. A corrected Chinese translation
+3. A brief explanation for the score
+4. Other words in the sentence (besides the target word) that were translated incorrectly or inaccurately
+
+The input is a JSON array of objects, each containing:
+- ""targetWord"": the vocabulary word being tested
+- ""originalSentence"": the English sentence
+- ""userTranslation"": the user's Chinese translation
+
+Return a valid JSON array of objects as your response. Each object in the array must have the following keys: 
+""score"", ""correctedTranslation"", ""explanation"", ""otherIncorrectWords"".
+
+For ""otherIncorrectWords"", list any words in the sentence (other than the target word) that were translated incorrectly. 
+If there are no other incorrect words, return an empty string """".
+Format: ""word1, word2"" or """" if none.
 
 Input:
 {JsonSerializer.Serialize(evaluationRequest)}
@@ -493,7 +594,14 @@ Example output format:
   {{
     ""score"": 8,
     ""correctedTranslation"": ""这家公司的标志在世界各地已经无处不在。"",
-    ""explanation"": ""翻译准确，但'变得'可以省略，使句子更简洁。""
+    ""explanation"": ""翻译准确，但'变得'可以省略，使句子更简洁。"",
+    ""otherIncorrectWords"": """"
+  }},
+  {{
+    ""score"": 6,
+    ""correctedTranslation"": ""保护地球的生物多样性对于维持生态平衡至关重要。"",
+    ""explanation"": ""整体翻译可以，但'确保'翻译不够准确。"",
+    ""otherIncorrectWords"": ""ensure""
   }},
   ...
 ]";
@@ -524,6 +632,12 @@ Example output format:
                         
                         var explanation = result.GetProperty("explanation").GetString() ?? "";
                         words[i].Explanation = TextCleaner.RemoveMarkdownFormatting(explanation);
+                        
+                        // 获取其他翻译不准确的单词
+                        var otherIncorrectWords = result.TryGetProperty("otherIncorrectWords", out JsonElement otherWordsElement)
+                            ? otherWordsElement.GetString() ?? ""
+                            : "";
+                        words[i].OtherIncorrectWords = TextCleaner.RemoveMarkdownFormatting(otherIncorrectWords);
                     }
                 }
                 return words;
@@ -665,7 +779,7 @@ Article:
 Please extract {keyWordsCount} key vocabulary words from the following article that are important for IELTS learners.
 
 For each word, provide:
-- Accurate phonetics in American English pronunciation (IPA format, US pronunciation)
+- Accurate phonetics in British English pronunciation (IPA format, UK pronunciation)
 - Chinese definition (including part of speech and comprehensive meaning)
 - An example sentence from the article or a similar context
 
@@ -680,7 +794,7 @@ Return the response as a valid JSON array. Each object in the array must have th
 Article:
 {article.Content}
 
-Example format (use American English phonetics):
+Example format (use British English phonetics):
 [
   {{
     ""word"": ""ubiquitous"",
@@ -691,7 +805,7 @@ Example format (use American English phonetics):
   ...
 ]
 
-REMEMBER: Use American English (US) pronunciation for all phonetics.";
+REMEMBER: Use British English (UK) pronunciation for all phonetics.";
 
             string keyWordsResponse = await CallGeminiApiAsync(keyWordsPrompt);
             if (!keyWordsResponse.StartsWith("Error:"))

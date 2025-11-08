@@ -10,6 +10,8 @@ namespace IELTS_Learning_Tool.Models
     public class WordLearningRecord
     {
         public string Word { get; set; } = "";
+        public string Phonetics { get; set; } = "";
+        public string Definition { get; set; } = "";
         public string Sentence { get; set; } = "";
         public DateTime Date { get; set; } = DateTime.Now;
         public int Score { get; set; } = 0;

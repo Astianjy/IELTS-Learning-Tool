@@ -314,53 +314,21 @@ namespace IELTS_Learning_Tool
 
             Console.WriteLine("\nAll translations are complete. Evaluating your answers... Please wait.");
             
-            // 辅助方法：判断是否是Pass（包括空字符串）
-            bool IsPass(VocabularyWord w) => string.IsNullOrWhiteSpace(w.UserTranslation) || w.UserTranslation == "Pass";
+            // 评估所有单词（包括Pass的单词）
+            List<VocabularyWord> evaluatedWords = await geminiService.EvaluateTranslationsAsync(words);
             
-            // 评估非Pass的单词
-            var wordsToEvaluate = words.Where(w => !IsPass(w)).ToList();
-            if (wordsToEvaluate.Count > 0)
+            // 将评估结果合并回原列表
+            for (int i = 0; i < words.Count && i < evaluatedWords.Count; i++)
             {
-                List<VocabularyWord> evaluatedWords = await geminiService.EvaluateTranslationsAsync(wordsToEvaluate);
-                // 将评估结果合并回原列表
-                int evalIndex = 0;
-                foreach (var word in words)
-                {
-                    if (!IsPass(word) && evalIndex < evaluatedWords.Count)
-                    {
-                        word.Score = evaluatedWords[evalIndex].Score;
-                        word.CorrectedTranslation = evaluatedWords[evalIndex].CorrectedTranslation;
-                        word.Explanation = evaluatedWords[evalIndex].Explanation;
-                        evalIndex++;
-                    }
-                }
-            }
-            
-            // 为Pass的单词获取正确的翻译
-            var passWords = words.Where(w => IsPass(w)).ToList();
-            if (passWords.Count > 0)
-            {
-                Console.WriteLine($"正在为 {passWords.Count} 个Pass的单词获取正确答案...");
-                foreach (var word in passWords)
-                {
-                    try
-                    {
-                        string correctTranslation = await geminiService.GetCorrectTranslationAsync(word.Sentence);
-                        word.CorrectedTranslation = correctTranslation;
-                        word.Explanation = "该单词被标记为不会，需要重点复习。";
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"为单词 {word.Word} 获取翻译失败: {ex.Message}");
-                        word.CorrectedTranslation = "（无法获取翻译）";
-                        word.Explanation = "该单词被标记为不会，需要重点复习。";
-                    }
-                }
+                words[i].Score = evaluatedWords[i].Score;
+                words[i].CorrectedTranslation = evaluatedWords[i].CorrectedTranslation;
+                words[i].Explanation = evaluatedWords[i].Explanation;
+                words[i].OtherIncorrectWords = evaluatedWords[i].OtherIncorrectWords;
             }
 
             Console.WriteLine("Evaluation complete. Generating HTML report...");
 
-            ReportGenerator.GenerateWordsReport(words);
+            await ReportGenerator.GenerateWordsReportAsync(words, geminiService);
 
             // 记录学习记录到 UsageTrackerService
             if (usageTrackerService != null)
@@ -368,6 +336,8 @@ namespace IELTS_Learning_Tool
                 var learningRecords = words.Select(word => new WordLearningRecord
                 {
                     Word = word.Word,
+                    Phonetics = word.Phonetics,
+                    Definition = word.Definition,
                     Sentence = word.Sentence,
                     Date = DateTime.Now,
                     Score = word.Score,

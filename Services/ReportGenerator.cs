@@ -22,7 +22,9 @@ namespace IELTS_Learning_Tool.Services
             }
             return reportsDir;
         }
-        public static void GenerateWordsReport(List<VocabularyWord> words)
+        public static async System.Threading.Tasks.Task GenerateWordsReportAsync(
+            List<VocabularyWord> words, 
+            Services.GeminiService? geminiService = null)
         {
             // 辅助方法：判断是否是Pass（包括空字符串）
             bool IsPass(VocabularyWord w) => string.IsNullOrWhiteSpace(w.UserTranslation) || w.UserTranslation == "Pass";
@@ -65,6 +67,9 @@ namespace IELTS_Learning_Tool.Services
             sb.AppendLine("        th { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-weight: 600; }");
             sb.AppendLine("        tr:hover { background-color: #f5f5f5; }");
             sb.AppendLine("        .word { font-weight: bold; color: #667eea; font-size: 1.1em; }");
+            sb.AppendLine("        .phonetics { color: #7f8c8d; font-style: italic; font-weight: normal; }");
+            sb.AppendLine("        .definition { color: #555; margin-top: 5px; }");
+            sb.AppendLine("        .sentence { color: #2c3e50; margin-top: 5px; font-style: italic; }");
             sb.AppendLine("        .score { text-align: center; font-weight: bold; font-size: 1.2em; }");
             sb.AppendLine("        .score-high { color: #28a745; }");
             sb.AppendLine("        .score-medium { color: #ffc107; }");
@@ -106,6 +111,24 @@ namespace IELTS_Learning_Tool.Services
             sb.AppendLine("                    </thead>");
             sb.AppendLine("                    <tbody>");
 
+            // 收集所有其他翻译不准确的单词
+            var allIncorrectWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var word in words)
+            {
+                if (!string.IsNullOrWhiteSpace(word.OtherIncorrectWords))
+                {
+                    // 解析单词列表（可能是逗号分隔的）
+                    var wordsList = word.OtherIncorrectWords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    foreach (var w in wordsList)
+                    {
+                        if (!string.IsNullOrWhiteSpace(w))
+                        {
+                            allIncorrectWords.Add(w.Trim());
+                        }
+                    }
+                }
+            }
+
             foreach (var word in words)
             {
                 string scoreColor = word.Score >= 8 ? "score-high" : word.Score >= 5 ? "score-medium" : "score-low";
@@ -115,8 +138,13 @@ namespace IELTS_Learning_Tool.Services
                     ? "<em style='color:#dc3545; font-weight:bold;'>Pass</em>" 
                     : HtmlHelper.EscapeHtml(word.UserTranslation);
                 
+                // 格式化单词显示：第一行单词+音标，第二行中文意思，第三行例句
+                string wordDisplay = $"<div class=\"word\">{HtmlHelper.EscapeHtml(word.Word)} <span class=\"phonetics\">({HtmlHelper.EscapeHtml(word.Phonetics)})</span></div>" +
+                    $"<div class=\"definition\">{HtmlHelper.EscapeHtml(word.Definition)}</div>" +
+                    $"<div class=\"sentence\">{HtmlHelper.EscapeHtml(word.Sentence)}</div>";
+                
                 sb.AppendLine("                        <tr>");
-                sb.AppendLine($"                            <td><div class=\"word\">{HtmlHelper.EscapeHtml(word.Word)}</div><div class=\"details\">({HtmlHelper.EscapeHtml(word.Phonetics)})</div>{HtmlHelper.EscapeHtml(word.Sentence)}</td>");
+                sb.AppendLine($"                            <td>{wordDisplay}</td>");
                 sb.AppendLine($"                            <td>{userTranslationDisplay}</td>");
                 sb.AppendLine($"                            <td><div>{HtmlHelper.EscapeHtml(word.CorrectedTranslation)}</div><div class=\"details\">{HtmlHelper.EscapeHtml(word.Explanation)}</div></td>");
                 sb.AppendLine($"                            <td class=\"score {scoreColor}\">{word.Score}/10</td>");
@@ -126,6 +154,86 @@ namespace IELTS_Learning_Tool.Services
             sb.AppendLine("                    </tbody>");
             sb.AppendLine("                </table>");
             sb.AppendLine("            </div>");
+
+            // 如果有其他翻译不准确的单词，添加新表格
+            if (allIncorrectWords.Count > 0)
+            {
+                // 收集需要获取信息的单词（在原始列表中找不到完整信息的）
+                var wordsNeedingInfo = new List<string>();
+                var wordInfoMap = new Dictionary<string, VocabularyWord>(StringComparer.OrdinalIgnoreCase);
+                
+                // 首先从原始单词列表中查找
+                foreach (var incorrectWord in allIncorrectWords)
+                {
+                    var foundWord = words.FirstOrDefault(w => w.Word.Equals(incorrectWord, StringComparison.OrdinalIgnoreCase));
+                    if (foundWord != null && !string.IsNullOrWhiteSpace(foundWord.Phonetics) && !string.IsNullOrWhiteSpace(foundWord.Definition))
+                    {
+                        wordInfoMap[incorrectWord] = foundWord;
+                    }
+                    else
+                    {
+                        wordsNeedingInfo.Add(incorrectWord);
+                    }
+                }
+                
+                // 如果有需要获取信息的单词，调用API批量获取
+                if (wordsNeedingInfo.Count > 0 && geminiService != null)
+                {
+                    try
+                    {
+                        var apiWordInfo = await geminiService.GetWordsInfoBatchAsync(wordsNeedingInfo);
+                        foreach (var kvp in apiWordInfo)
+                        {
+                            wordInfoMap[kvp.Key] = kvp.Value;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"获取单词信息失败: {ex.Message}");
+                    }
+                }
+                
+                sb.AppendLine("            <div class=\"section\">");
+                sb.AppendLine("                <h2>📚 其他翻译不准确的单词</h2>");
+                sb.AppendLine("                <table class=\"incorrect-words-table\">");
+                sb.AppendLine("                    <thead>");
+                sb.AppendLine("                        <tr>");
+                sb.AppendLine("                            <th style=\"width: 15%;\">单词</th>");
+                sb.AppendLine("                            <th style=\"width: 25%;\">音标</th>");
+                sb.AppendLine("                            <th style=\"width: 20%;\">中文意思</th>");
+                sb.AppendLine("                            <th style=\"width: 40%;\">例句</th>");
+                sb.AppendLine("                        </tr>");
+                sb.AppendLine("                    </thead>");
+                sb.AppendLine("                    <tbody>");
+
+                foreach (var incorrectWord in allIncorrectWords.OrderBy(w => w))
+                {
+                    if (wordInfoMap.ContainsKey(incorrectWord))
+                    {
+                        var wordInfo = wordInfoMap[incorrectWord];
+                        sb.AppendLine("                        <tr>");
+                        sb.AppendLine($"                            <td class=\"word\">{HtmlHelper.EscapeHtml(wordInfo.Word)}</td>");
+                        sb.AppendLine($"                            <td class=\"phonetics\">{HtmlHelper.EscapeHtml(wordInfo.Phonetics)}</td>");
+                        sb.AppendLine($"                            <td class=\"definition\">{HtmlHelper.EscapeHtml(wordInfo.Definition)}</td>");
+                        sb.AppendLine($"                            <td class=\"sentence\">{HtmlHelper.EscapeHtml(wordInfo.Sentence)}</td>");
+                        sb.AppendLine("                        </tr>");
+                    }
+                    else
+                    {
+                        // 如果找不到信息，显示单词名，其他字段显示"-"
+                        sb.AppendLine("                        <tr>");
+                        sb.AppendLine($"                            <td class=\"word\">{HtmlHelper.EscapeHtml(incorrectWord)}</td>");
+                        sb.AppendLine($"                            <td class=\"phonetics\"><span style='color:#999;'>-</span></td>");
+                        sb.AppendLine($"                            <td class=\"definition\"><span style='color:#999;'>-</span></td>");
+                        sb.AppendLine($"                            <td class=\"sentence\"><span style='color:#999;'>-</span></td>");
+                        sb.AppendLine("                        </tr>");
+                    }
+                }
+
+                sb.AppendLine("                    </tbody>");
+                sb.AppendLine("                </table>");
+                sb.AppendLine("            </div>");
+            }
 
             sb.AppendLine("        </div>");
             sb.AppendLine("        <div class=\"footer\">");

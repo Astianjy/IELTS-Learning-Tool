@@ -90,14 +90,13 @@ namespace IELTS_Learning_Tool.Services
                 {
                     string reviewSentence = reviewSentences.ContainsKey(record.Word)
                         ? reviewSentences[record.Word]
-                        : record.Sentence; // 如果找不到，使用原始例句
+                        : $"Review the usage of: {record.Word}"; // 如果找不到，使用默认值
 
                     reviewWords.Add(new ReviewWord
                     {
                         Word = record.Word,
-                        Phonetics = "", // 可以从原始记录中获取，这里简化处理
-                        Definition = "", // 可以从原始记录中获取
-                        OriginalSentence = record.Sentence,
+                        Phonetics = record.Phonetics ?? "",
+                        Definition = record.Definition ?? "",
                         ReviewSentence = reviewSentence,
                         Score = record.Score,
                         UserTranslation = record.UserTranslation,
@@ -173,6 +172,8 @@ namespace IELTS_Learning_Tool.Services
             sb.AppendLine("        th { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-weight: 600; }");
             sb.AppendLine("        tr:hover { background-color: #f5f5f5; }");
             sb.AppendLine("        .word { font-weight: bold; color: #667eea; font-size: 1.1em; }");
+            sb.AppendLine("        .phonetics { color: #7f8c8d; font-style: italic; margin-bottom: 5px; }");
+            sb.AppendLine("        .definition { color: #555; }");
             sb.AppendLine("        .score { text-align: center; font-weight: bold; font-size: 1.2em; }");
             sb.AppendLine("        .score-high { color: #28a745; }");
             sb.AppendLine("        .score-medium { color: #ffc107; }");
@@ -207,7 +208,7 @@ namespace IELTS_Learning_Tool.Services
             sb.AppendLine("                    <thead>");
             sb.AppendLine("                        <tr>");
             sb.AppendLine("                            <th>单词</th>");
-            sb.AppendLine("                            <th>原始例句</th>");
+            sb.AppendLine("                            <th>音标与中文翻译</th>");
             sb.AppendLine("                            <th>复习例句</th>");
             sb.AppendLine("                            <th>你的翻译</th>");
             sb.AppendLine("                            <th>修正翻译</th>");
@@ -225,9 +226,13 @@ namespace IELTS_Learning_Tool.Services
                     ? "<em style='color:#dc3545; font-weight:bold;'>Pass</em>" 
                     : HtmlHelper.EscapeHtml(review.UserTranslation);
                 
+                // 格式化音标和中文翻译显示
+                string phoneticsAndDefinition = $"<div class=\"phonetics\">{HtmlHelper.EscapeHtml(review.Phonetics)}</div>" +
+                    $"<div class=\"definition\">{HtmlHelper.EscapeHtml(review.Definition)}</div>";
+                
                 sb.AppendLine("                        <tr>");
                 sb.AppendLine($"                            <td class=\"word\">{HtmlHelper.EscapeHtml(review.Word)}</td>");
-                sb.AppendLine($"                            <td>{HtmlHelper.EscapeHtml(review.OriginalSentence)}</td>");
+                sb.AppendLine($"                            <td>{phoneticsAndDefinition}</td>");
                 sb.AppendLine($"                            <td><span class=\"review-sentence\">{HtmlHelper.EscapeHtml(review.ReviewSentence)}</span></td>");
                 sb.AppendLine($"                            <td>{userTranslationDisplay}</td>");
                 sb.AppendLine($"                            <td>{HtmlHelper.EscapeHtml(review.CorrectedTranslation)}</td>");
@@ -300,7 +305,6 @@ namespace IELTS_Learning_Tool.Services
         public string Word { get; set; } = "";
         public string Phonetics { get; set; } = "";
         public string Definition { get; set; } = "";
-        public string OriginalSentence { get; set; } = "";
         public string ReviewSentence { get; set; } = "";
         public int Score { get; set; }
         public string UserTranslation { get; set; } = "";
