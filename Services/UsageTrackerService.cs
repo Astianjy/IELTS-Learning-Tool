@@ -150,6 +150,59 @@ namespace IELTS_Learning_Tool.Services
         {
             return _record.GetStatistics();
         }
+        
+        /// <summary>
+        /// 记录单词学习信息（包含日期和得分）
+        /// </summary>
+        public void RecordWordLearning(Models.WordLearningRecord record)
+        {
+            _record.RecordWordLearning(record);
+            SaveRecord();
+        }
+        
+        /// <summary>
+        /// 批量记录单词学习信息
+        /// </summary>
+        public void RecordWordLearnings(IEnumerable<Models.WordLearningRecord> records)
+        {
+            foreach (var record in records)
+            {
+                _record.RecordWordLearning(record);
+            }
+            SaveRecord();
+        }
+        
+        /// <summary>
+        /// 获取指定日期范围内的已使用单词
+        /// </summary>
+        public HashSet<string> GetUsedWordsInDateRange(int days)
+        {
+            return _record.GetUsedWordsInDateRange(days);
+        }
+        
+        /// <summary>
+        /// 获取指定日期范围内的已使用例句
+        /// </summary>
+        public HashSet<string> GetUsedSentencesInDateRange(int days)
+        {
+            return _record.GetUsedSentencesInDateRange(days);
+        }
+        
+        /// <summary>
+        /// 获取今天的学习记录
+        /// </summary>
+        public List<Models.WordLearningRecord> GetTodayRecords()
+        {
+            return _record.GetTodayRecords();
+        }
+        
+        /// <summary>
+        /// 获取指定日期的学习记录
+        /// </summary>
+        public List<Models.WordLearningRecord> GetDailyRecords(string date)
+        {
+            return _record.GetDailyRecords(date);
+        }
     }
 }
 

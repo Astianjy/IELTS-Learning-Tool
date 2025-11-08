@@ -132,15 +132,46 @@ namespace IELTS_Learning_Tool.Services
             }
         }
 
-        public async Task<List<VocabularyWord>> GetIeltsWordsAsync(int wordCount, List<string> topics)
+        /// <summary>
+        /// 为单词生成新的复习例句
+        /// </summary>
+        public async Task<string> GenerateReviewSentenceAsync(string word)
         {
-            // 获取已使用的词汇和例句，避免重复
+            var prompt = $@"
+Please generate a NEW, DIFFERENT example sentence for the IELTS vocabulary word: ""{word}"".
+
+Requirements:
+1. The sentence must clearly demonstrate the word's meaning and usage
+2. The sentence should be natural and appropriate for IELTS level
+3. Use American English
+4. Do NOT use markdown formatting (no **, no *, no bold, no italic)
+5. Return ONLY the sentence, no additional text or explanation
+
+Word: {word}
+
+Example sentence:";
+
+            string response = await CallGeminiApiAsync(prompt);
+            
+            if (response.StartsWith("Error:"))
+            {
+                return $"Review the usage of: {word}";
+            }
+            
+            // 清理 markdown 格式
+            string cleaned = TextCleaner.CleanSentence(response.Trim());
+            return cleaned;
+        }
+        
+        public async Task<List<VocabularyWord>> GetIeltsWordsAsync(int wordCount, List<string> topics, int excludeDays = 7)
+        {
+            // 获取指定日期范围内的已使用词汇和例句，避免重复
             var usedWords = _usageTrackerService != null
-                ? _usageTrackerService.GetRecord().UsedWords.ToList()
+                ? _usageTrackerService.GetUsedWordsInDateRange(excludeDays).ToList()
                 : new List<string>();
             
             var usedSentences = _usageTrackerService != null
-                ? _usageTrackerService.GetRecord().UsedSentences.ToList()
+                ? _usageTrackerService.GetUsedSentencesInDateRange(excludeDays).ToList()
                 : new List<string>();
             
             // 使用AI从雅思词汇中生成题目，避免重复

@@ -1,8 +1,24 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace IELTS_Learning_Tool.Models
 {
+    /// <summary>
+    /// 单词学习记录，包含日期和得分信息
+    /// </summary>
+    public class WordLearningRecord
+    {
+        public string Word { get; set; } = "";
+        public string Sentence { get; set; } = "";
+        public DateTime Date { get; set; } = DateTime.Now;
+        public int Score { get; set; } = 0;
+        public string UserTranslation { get; set; } = "";
+        public string CorrectedTranslation { get; set; } = "";
+        public string Explanation { get; set; } = "";
+        public bool IsSkipped { get; set; } = false;
+    }
+    
     /// <summary>
     /// 使用记录，用于跟踪已使用的词汇和例句
     /// </summary>
@@ -11,6 +27,9 @@ namespace IELTS_Learning_Tool.Models
         public HashSet<string> UsedWords { get; set; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> UsedSentences { get; set; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public DateTime LastUpdated { get; set; } = DateTime.Now;
+        
+        // 按日期分类的单词学习记录
+        public Dictionary<string, List<WordLearningRecord>> DailyRecords { get; set; } = new Dictionary<string, List<WordLearningRecord>>();
         
         /// <summary>
         /// 记录使用的词汇
@@ -96,6 +115,95 @@ namespace IELTS_Learning_Tool.Models
         public (int wordCount, int sentenceCount) GetStatistics()
         {
             return (UsedWords.Count, UsedSentences.Count);
+        }
+        
+        /// <summary>
+        /// 记录单词学习信息（包含日期和得分）
+        /// </summary>
+        public void RecordWordLearning(WordLearningRecord record)
+        {
+            string dateKey = record.Date.ToString("yyyy-MM-dd");
+            if (!DailyRecords.ContainsKey(dateKey))
+            {
+                DailyRecords[dateKey] = new List<WordLearningRecord>();
+            }
+            DailyRecords[dateKey].Add(record);
+            
+            // 同时记录到 UsedWords 和 UsedSentences（用于去重）
+            RecordWord(record.Word);
+            RecordSentence(record.Sentence);
+        }
+        
+        /// <summary>
+        /// 获取指定日期范围内的已使用单词
+        /// </summary>
+        public HashSet<string> GetUsedWordsInDateRange(int days)
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            DateTime cutoffDate = DateTime.Now.AddDays(-days);
+            
+            foreach (var kvp in DailyRecords)
+            {
+                if (DateTime.TryParse(kvp.Key, out DateTime recordDate) && recordDate >= cutoffDate)
+                {
+                    foreach (var record in kvp.Value)
+                    {
+                        if (!string.IsNullOrWhiteSpace(record.Word))
+                        {
+                            result.Add(record.Word.Trim().ToLower());
+                        }
+                    }
+                }
+            }
+            
+            return result;
+        }
+        
+        /// <summary>
+        /// 获取指定日期范围内的已使用例句
+        /// </summary>
+        public HashSet<string> GetUsedSentencesInDateRange(int days)
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            DateTime cutoffDate = DateTime.Now.AddDays(-days);
+            
+            foreach (var kvp in DailyRecords)
+            {
+                if (DateTime.TryParse(kvp.Key, out DateTime recordDate) && recordDate >= cutoffDate)
+                {
+                    foreach (var record in kvp.Value)
+                    {
+                        if (!string.IsNullOrWhiteSpace(record.Sentence))
+                        {
+                            var normalized = NormalizeSentence(record.Sentence);
+                            result.Add(normalized);
+                        }
+                    }
+                }
+            }
+            
+            return result;
+        }
+        
+        /// <summary>
+        /// 获取指定日期的学习记录
+        /// </summary>
+        public List<WordLearningRecord> GetDailyRecords(string date)
+        {
+            if (DailyRecords.ContainsKey(date))
+            {
+                return DailyRecords[date];
+            }
+            return new List<WordLearningRecord>();
+        }
+        
+        /// <summary>
+        /// 获取今天的学习记录
+        /// </summary>
+        public List<WordLearningRecord> GetTodayRecords()
+        {
+            string today = DateTime.Now.ToString("yyyy-MM-dd");
+            return GetDailyRecords(today);
         }
     }
 }

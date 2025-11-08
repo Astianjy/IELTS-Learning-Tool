@@ -142,11 +142,13 @@ namespace IELTS_Learning_Tool
             }
             
             // 解析命令行参数
-            string mode = ArgumentParser.ParseArguments(args);
+            var parseResult = ArgumentParser.ParseArguments(args);
+            string mode = parseResult.mode;
+            string? dateParam = parseResult.date;
             
-            // 初始化使用记录跟踪服务（仅用于词汇学习模式，文章模式不需要）
+            // 初始化使用记录跟踪服务（用于词汇学习模式和每日报告模式）
             UsageTrackerService? usageTrackerService = null;
-            if (mode == "words")
+            if (mode == "words" || mode == "daily-report")
             {
                 try
                 {
@@ -172,8 +174,8 @@ namespace IELTS_Learning_Tool
                 HelpDisplay.ShowHelp();
                 return;
             }
-
-            // 验证 API 密钥
+            
+            // 验证 API 密钥（所有模式都需要）
             if (string.IsNullOrWhiteSpace(_config.GoogleApiKey) || 
                 _config.GoogleApiKey == "YOUR_API_KEY_HERE" || 
                 _config.GoogleApiKey == "YOUR_GOOGLE_GEMINI_API_KEY")
@@ -193,6 +195,39 @@ namespace IELTS_Learning_Tool
                 _config.GoogleApiKey = apiKey;
             }
 
+            // 处理每日报告模式
+            if (mode == "daily-report")
+            {
+                if (usageTrackerService == null)
+                {
+                    Console.WriteLine("错误: 无法加载使用记录文件。");
+                    return;
+                }
+                
+                string targetDate = dateParam ?? DateTime.Now.ToString("yyyy-MM-dd");
+                var dailyRecords = usageTrackerService.GetDailyRecords(targetDate);
+                
+                if (dailyRecords.Count == 0)
+                {
+                    Console.WriteLine($"日期 {targetDate} 没有学习记录。");
+                    return;
+                }
+                
+                Console.WriteLine($"正在生成 {targetDate} 的每日复习报告...");
+                GeminiService? dailyReportGeminiService = null;
+                try
+                {
+                    dailyReportGeminiService = new GeminiService(_config, usageTrackerService);
+                    await DailyReportGenerator.GenerateDailyReportAsync(dailyRecords, dailyReportGeminiService);
+                }
+                finally
+                {
+                    dailyReportGeminiService?.Dispose();
+                    usageTrackerService?.SaveRecord();
+                }
+                return;
+            }
+
             GeminiService? geminiService = null;
             try
             {
@@ -200,13 +235,13 @@ namespace IELTS_Learning_Tool
 
                 if (mode == "words")
                 {
-                    await RunWordsMode(geminiService);
+                    await RunWordsMode(geminiService, usageTrackerService);
                 }
                 else if (mode == "article")
                 {
                     await RunArticleMode(geminiService);
                 }
-                else
+                else if (mode != "daily-report") // daily-report已经在上面处理了
                 {
                     Console.WriteLine("错误: 无效的参数。使用 --help 或 -h 查看帮助信息。");
                 }
@@ -219,11 +254,11 @@ namespace IELTS_Learning_Tool
             }
         }
 
-        private static async Task RunWordsMode(GeminiService geminiService)
+        private static async Task RunWordsMode(GeminiService geminiService, UsageTrackerService? usageTrackerService)
         {
             Console.WriteLine("--- IELTS Vocabulary Learning Mode ---");
             Console.WriteLine($"\nFetching {_config.WordCount} new IELTS words for you... Please wait.");
-            List<VocabularyWord> words = await geminiService.GetIeltsWordsAsync(_config.WordCount, _config.Topics);
+            List<VocabularyWord> words = await geminiService.GetIeltsWordsAsync(_config.WordCount, _config.Topics, _config.ExcludeDays);
 
             if (words.Count == 0)
             {
@@ -262,9 +297,13 @@ namespace IELTS_Learning_Tool
                 string userInput = ReadUserInput().Trim();
                 if (userInput.Equals("Pass", StringComparison.OrdinalIgnoreCase))
                 {
-                    word.IsSkipped = true;
+                    // Pass视为不会，设置Score=0，但仍然记录（不标记为跳过）
+                    word.UserTranslation = "Pass";
+                    word.Score = 0;
+                    word.CorrectedTranslation = "（未作答，标记为不会）";
+                    word.Explanation = "该单词被标记为不会，需要重点复习。";
                     Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine("Question skipped.");
+                    Console.WriteLine("Question marked as not known (Score: 0).");
                     Console.ResetColor();
                 }
                 else
@@ -276,24 +315,53 @@ namespace IELTS_Learning_Tool
             }
 
             Console.WriteLine("\nAll translations are complete. Evaluating your answers... Please wait.");
-            List<VocabularyWord> evaluatedWords = await geminiService.EvaluateTranslationsAsync(words);
-
-            foreach (var word in evaluatedWords)
+            // 只评估非Pass的单词
+            var wordsToEvaluate = words.Where(w => w.UserTranslation != "Pass").ToList();
+            if (wordsToEvaluate.Count > 0)
             {
-                if (word.IsSkipped)
+                List<VocabularyWord> evaluatedWords = await geminiService.EvaluateTranslationsAsync(wordsToEvaluate);
+                // 将评估结果合并回原列表
+                int evalIndex = 0;
+                foreach (var word in words)
                 {
-                    word.Score = 0;
-                    word.Explanation = "(User skipped) " + word.Explanation;
+                    if (word.UserTranslation != "Pass" && evalIndex < evaluatedWords.Count)
+                    {
+                        word.Score = evaluatedWords[evalIndex].Score;
+                        word.CorrectedTranslation = evaluatedWords[evalIndex].CorrectedTranslation;
+                        word.Explanation = evaluatedWords[evalIndex].Explanation;
+                        evalIndex++;
+                    }
                 }
             }
+            
+            // Pass的单词已经设置了Score=0，不需要额外处理
 
             Console.WriteLine("Evaluation complete. Generating HTML report...");
 
-            ReportGenerator.GenerateWordsReport(evaluatedWords);
+            ReportGenerator.GenerateWordsReport(words);
+
+            // 记录学习记录到 UsageTrackerService
+            if (usageTrackerService != null)
+            {
+                var learningRecords = words.Select(word => new WordLearningRecord
+                {
+                    Word = word.Word,
+                    Sentence = word.Sentence,
+                    Date = DateTime.Now,
+                    Score = word.Score,
+                    UserTranslation = word.UserTranslation,
+                    CorrectedTranslation = word.CorrectedTranslation,
+                    Explanation = word.Explanation,
+                    IsSkipped = false // Pass不再视为跳过，而是不会
+                }).ToList();
+                
+                usageTrackerService.RecordWordLearnings(learningRecords);
+            }
 
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"\n报告已成功生成到项目目录。");
             Console.ResetColor();
+            
             Console.WriteLine("\nThank you for using the IELTS Learning Tool. See you next time!");
         }
 

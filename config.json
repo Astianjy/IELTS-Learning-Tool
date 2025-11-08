@@ -25,6 +25,7 @@
     "body and health",
     "time and dates"
   ],
-  "ArticleKeyWordsCount": 15
+  "ArticleKeyWordsCount": 15,
+  "ExcludeDays": 7
 }
 
