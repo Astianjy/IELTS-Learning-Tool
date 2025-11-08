@@ -141,27 +141,30 @@ namespace IELTS_Learning_Tool
                 return;
             }
             
-            // 初始化使用记录跟踪服务（用于消除重复）
-            UsageTrackerService? usageTrackerService = null;
-            try
-            {
-                usageTrackerService = new UsageTrackerService("usage_record.json");
-                var stats = usageTrackerService.GetStatistics();
-                if (stats.wordCount > 0 || stats.sentenceCount > 0)
-                {
-                    Console.ForegroundColor = ConsoleColor.Cyan;
-                    Console.WriteLine($"已加载使用记录: {stats.wordCount} 个词汇, {stats.sentenceCount} 个例句");
-                    Console.ResetColor();
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"警告: 加载使用记录失败: {ex.Message}，将创建新记录");
-                usageTrackerService = new UsageTrackerService("usage_record.json");
-            }
-
             // 解析命令行参数
             string mode = ArgumentParser.ParseArguments(args);
+            
+            // 初始化使用记录跟踪服务（仅用于词汇学习模式，文章模式不需要）
+            UsageTrackerService? usageTrackerService = null;
+            if (mode == "words")
+            {
+                try
+                {
+                    usageTrackerService = new UsageTrackerService("usage_record.json");
+                    var stats = usageTrackerService.GetStatistics();
+                    if (stats.wordCount > 0 || stats.sentenceCount > 0)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Cyan;
+                        Console.WriteLine($"已加载使用记录: {stats.wordCount} 个词汇, {stats.sentenceCount} 个例句");
+                        Console.ResetColor();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"警告: 加载使用记录失败: {ex.Message}，将创建新记录");
+                    usageTrackerService = new UsageTrackerService("usage_record.json");
+                }
+            }
             
             // 显示帮助信息
             if (mode == "help")
@@ -301,6 +304,8 @@ namespace IELTS_Learning_Tool
 
             // 创建进度跟踪
             var progress = new ArticleGenerationProgress();
+            progress.CurrentStep = 0; // 初始化阶段，显示10%
+            progress.CurrentStatus = "正在初始化...";
 
             // 启动进度显示任务
             var progressTask = ProgressDisplay.ShowProgressAsync(progress);

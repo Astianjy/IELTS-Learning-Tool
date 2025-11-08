@@ -414,7 +414,8 @@ Example output format:
             if (progress != null)
             {
                 progress.CurrentStatus = $"已选择主题: {selectedTopic}，正在生成文章内容...";
-                progress.CurrentStep = 0;
+                progress.CurrentStep = 1; // 从步骤1开始（初始化已完成，显示10%）
+                progress.SubStepProgress = 0;
             }
 
             // 生成文章的 prompt
@@ -475,7 +476,8 @@ Example format:
             if (progress != null)
             {
                 progress.CurrentStatus = "文章内容生成完成，正在生成中文翻译...";
-                progress.CurrentStep = 1;
+                progress.CurrentStep = 2; // 步骤2：翻译阶段 (30-60%)
+                progress.SubStepProgress = 0;
             }
 
             // 生成中文翻译
@@ -497,7 +499,8 @@ Article:
             if (progress != null)
             {
                 progress.CurrentStatus = "翻译完成，正在提取重点词汇...";
-                progress.CurrentStep = 2;
+                progress.CurrentStep = 3; // 步骤3：提取词汇阶段 (60-80%)
+                progress.SubStepProgress = 0;
             }
 
             // 提取重点词汇
@@ -547,7 +550,8 @@ REMEMBER: Use American English (US) pronunciation for all phonetics.";
             if (progress != null)
             {
                 progress.CurrentStatus = "完成！";
-                progress.CurrentStep = 3;
+                progress.CurrentStep = 4; // 步骤4：完成 (100%)
+                progress.SubStepProgress = 100;
             }
 
             return article;
