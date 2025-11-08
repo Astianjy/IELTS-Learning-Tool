@@ -133,37 +133,6 @@ namespace IELTS_Learning_Tool.Services
         }
 
         /// <summary>
-        /// 为单词生成新的复习例句
-        /// </summary>
-        public async Task<string> GenerateReviewSentenceAsync(string word)
-        {
-            var prompt = $@"
-Please generate a NEW, DIFFERENT example sentence for the IELTS vocabulary word: ""{word}"".
-
-Requirements:
-1. The sentence must clearly demonstrate the word's meaning and usage
-2. The sentence should be natural and appropriate for IELTS level
-3. Use British English
-4. Do NOT use markdown formatting (no **, no *, no bold, no italic)
-5. Return ONLY the sentence, no additional text or explanation
-
-Word: {word}
-
-Example sentence:";
-
-            string response = await CallGeminiApiAsync(prompt);
-            
-            if (response.StartsWith("Error:"))
-            {
-                return $"Review the usage of: {word}";
-            }
-            
-            // 清理 markdown 格式
-            string cleaned = TextCleaner.CleanSentence(response.Trim());
-            return cleaned;
-        }
-
-        /// <summary>
         /// 批量生成复习例句（一次性为多个单词生成）
         /// </summary>
         public async Task<Dictionary<string, string>> GenerateReviewSentencesBatchAsync(List<string> words)
@@ -651,27 +620,65 @@ Example output format:
         }
 
         /// <summary>
-        /// 为Pass的单词获取正确的翻译（不评分）
+        /// 批量翻译句子
         /// </summary>
-        public async Task<string> GetCorrectTranslationAsync(string sentence)
+        public async Task<Dictionary<string, string>> TranslateSentencesBatchAsync(List<string> sentences)
         {
+            var result = new Dictionary<string, string>();
+            
+            if (sentences == null || sentences.Count == 0)
+            {
+                return result;
+            }
+
+            var sentencesList = sentences.Select((s, i) => $"{i + 1}. {s}").ToList();
+            var sentencesText = string.Join("\n", sentencesList);
+            
             var prompt = $@"
-Please provide a correct and natural Chinese translation for the following English sentence.
-Return only the Chinese translation, without any additional text, explanation, or formatting.
+Please translate the following English sentences into Chinese.
+Return the translations as a valid JSON object where each key is the original English sentence and each value is the Chinese translation.
 
-English sentence:
-{sentence}
+English sentences:
+{sentencesText}
 
-Chinese translation:";
+Return the response as a JSON object in this format:
+{{
+  ""{sentences[0]}"": ""中文翻译1"",
+  ""{(sentences.Count > 1 ? sentences[1] : "")}"": ""中文翻译2"",
+  ...
+}}
+
+Return only the JSON object, no additional text or formatting.";
 
             string response = await CallGeminiApiAsync(prompt);
             
             if (response.StartsWith("Error:"))
             {
-                return "（无法获取翻译）";
+                return result;
             }
-            
-            return TextCleaner.RemoveMarkdownFormatting(response.Trim());
+
+            try
+            {
+                var cleanedJson = CleanJsonResponse(response);
+                using (JsonDocument doc = JsonDocument.Parse(cleanedJson))
+                {
+                    JsonElement root = doc.RootElement;
+                    foreach (var sentence in sentences)
+                    {
+                        if (root.TryGetProperty(sentence, out JsonElement translationElement))
+                        {
+                            string translation = translationElement.GetString() ?? "";
+                            result[sentence] = TextCleaner.RemoveMarkdownFormatting(translation.Trim());
+                        }
+                    }
+                }
+            }
+            catch (JsonException ex)
+            {
+                Console.WriteLine($"批量翻译失败: {ex.Message}");
+            }
+
+            return result;
         }
 
         public async Task<Article> GetDailyArticleAsync(List<string> topics, int keyWordsCount, ArticleGenerationProgress? progress = null)

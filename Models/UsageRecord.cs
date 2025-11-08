@@ -18,7 +18,6 @@ namespace IELTS_Learning_Tool.Models
         public string UserTranslation { get; set; } = "";
         public string CorrectedTranslation { get; set; } = "";
         public string Explanation { get; set; } = "";
-        public bool IsSkipped { get; set; } = false;
     }
     
     /// <summary>

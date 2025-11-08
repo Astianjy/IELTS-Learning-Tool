@@ -343,8 +343,7 @@ namespace IELTS_Learning_Tool
                     Score = word.Score,
                     UserTranslation = word.UserTranslation,
                     CorrectedTranslation = word.CorrectedTranslation,
-                    Explanation = word.Explanation,
-                    IsSkipped = false // Pass不再视为跳过，而是不会
+                    Explanation = word.Explanation
                 }).ToList();
                 
                 usageTrackerService.RecordWordLearnings(learningRecords);

@@ -67,7 +67,7 @@ namespace IELTS_Learning_Tool.Services
                 reviewSentences = await geminiService.GenerateReviewSentencesBatchAsync(wordsToReview);
                 _progressComplete = true;
                 await progressTask;
-                Console.Write("\r✓ 复习例句生成完成，正在生成报告...\n");
+                Console.Write("\r✓ 复习例句生成完成，正在生成翻译...\n");
             }
             catch (Exception ex)
             {
@@ -82,6 +82,21 @@ namespace IELTS_Learning_Tool.Services
                 }
             }
 
+            // 批量生成复习例句的翻译
+            Dictionary<string, string> reviewSentenceTranslations = new Dictionary<string, string>();
+            if (reviewSentences.Count > 0)
+            {
+                try
+                {
+                    var sentencesToTranslate = reviewSentences.Values.Distinct().ToList();
+                    reviewSentenceTranslations = await geminiService.TranslateSentencesBatchAsync(sentencesToTranslate);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"批量生成翻译失败: {ex.Message}");
+                }
+            }
+
             // 构建ReviewWord列表
             var reviewWords = new List<ReviewWord>();
             foreach (var record in todayRecords)
@@ -92,16 +107,19 @@ namespace IELTS_Learning_Tool.Services
                         ? reviewSentences[record.Word]
                         : $"Review the usage of: {record.Word}"; // 如果找不到，使用默认值
 
+                    // 获取复习例句的翻译
+                    string reviewSentenceTranslation = reviewSentenceTranslations.ContainsKey(reviewSentence)
+                        ? reviewSentenceTranslations[reviewSentence]
+                        : "";
+
                     reviewWords.Add(new ReviewWord
                     {
                         Word = record.Word,
                         Phonetics = record.Phonetics ?? "",
                         Definition = record.Definition ?? "",
                         ReviewSentence = reviewSentence,
-                        Score = record.Score,
-                        UserTranslation = record.UserTranslation,
-                        CorrectedTranslation = record.CorrectedTranslation,
-                        Explanation = record.Explanation
+                        ReviewSentenceTranslation = reviewSentenceTranslation,
+                        Score = record.Score
                     });
                 }
             }
@@ -210,8 +228,7 @@ namespace IELTS_Learning_Tool.Services
             sb.AppendLine("                            <th>单词</th>");
             sb.AppendLine("                            <th>音标与中文翻译</th>");
             sb.AppendLine("                            <th>复习例句</th>");
-            sb.AppendLine("                            <th>你的翻译</th>");
-            sb.AppendLine("                            <th>修正翻译</th>");
+            sb.AppendLine("                            <th>复习例句翻译</th>");
             sb.AppendLine("                            <th>得分</th>");
             sb.AppendLine("                        </tr>");
             sb.AppendLine("                    </thead>");
@@ -220,11 +237,6 @@ namespace IELTS_Learning_Tool.Services
             foreach (var review in reviewWords)
             {
                 string scoreColor = review.Score >= 8 ? "score-high" : review.Score >= 5 ? "score-medium" : "score-low";
-                // Pass的单词或空字符串在"你的翻译"列显示为Pass，而不是空白
-                bool isPass = string.IsNullOrWhiteSpace(review.UserTranslation) || review.UserTranslation == "Pass";
-                string userTranslationDisplay = isPass
-                    ? "<em style='color:#dc3545; font-weight:bold;'>Pass</em>" 
-                    : HtmlHelper.EscapeHtml(review.UserTranslation);
                 
                 // 格式化音标和中文翻译显示
                 string phoneticsAndDefinition = $"<div class=\"phonetics\">{HtmlHelper.EscapeHtml(review.Phonetics)}</div>" +
@@ -234,8 +246,7 @@ namespace IELTS_Learning_Tool.Services
                 sb.AppendLine($"                            <td class=\"word\">{HtmlHelper.EscapeHtml(review.Word)}</td>");
                 sb.AppendLine($"                            <td>{phoneticsAndDefinition}</td>");
                 sb.AppendLine($"                            <td><span class=\"review-sentence\">{HtmlHelper.EscapeHtml(review.ReviewSentence)}</span></td>");
-                sb.AppendLine($"                            <td>{userTranslationDisplay}</td>");
-                sb.AppendLine($"                            <td>{HtmlHelper.EscapeHtml(review.CorrectedTranslation)}</td>");
+                sb.AppendLine($"                            <td>{HtmlHelper.EscapeHtml(review.ReviewSentenceTranslation)}</td>");
                 sb.AppendLine($"                            <td class=\"score {scoreColor}\">{review.Score}/10</td>");
                 sb.AppendLine("                        </tr>");
             }
@@ -306,10 +317,8 @@ namespace IELTS_Learning_Tool.Services
         public string Phonetics { get; set; } = "";
         public string Definition { get; set; } = "";
         public string ReviewSentence { get; set; } = "";
+        public string ReviewSentenceTranslation { get; set; } = "";
         public int Score { get; set; }
-        public string UserTranslation { get; set; } = "";
-        public string CorrectedTranslation { get; set; } = "";
-        public string Explanation { get; set; } = "";
     }
 }
 

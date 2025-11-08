@@ -10,7 +10,6 @@ namespace IELTS_Learning_Tool.Models
         public int Score { get; set; }
         public string CorrectedTranslation { get; set; } = "";
         public string Explanation { get; set; } = "";
-        public bool IsSkipped { get; set; }
         public string OtherIncorrectWords { get; set; } = ""; // 句子中其他翻译不准确的单词
     }
 }
