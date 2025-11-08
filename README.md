@@ -1,165 +1,47 @@
-# IELTS Learning Tool - 雅思学习工具
+# 你想在终端上学习英语吗？ 🚀
 
-一个基于 Google Gemini API 的智能雅思学习工具，提供单词学习和每日文章阅读功能，帮助提高雅思英语水平。
+厌倦了复杂的应用界面和广告干扰？想要一个专注、高效的英语学习体验？
 
-## ✨ 功能特性
+**IELTS Learning Tool** 是一个专为终端设计的智能雅思学习工具，让你在简洁的命令行界面中，享受 AI 驱动的个性化英语学习。
 
-### 📚 单词学习模式
-- 从配置的主题列表中随机选择 IELTS 核心词汇
-- 提供单词的音标、释义和例句
-- 交互式翻译练习，实时评估翻译质量
-- 生成详细的 HTML 学习报告，包含评分和解析
+## ✨ 为什么选择终端学习？
 
-### 📖 每日文章模式
-- 从配置的主题中随机生成 500-1000 词的英文文章
-- 自动生成全文中文翻译
-- 提取文章中的重点词汇（含音标、释义、例句）
-- 生成精美的 HTML 报告，包含原文、翻译和词汇表
+- 🎯 **专注无干扰** - 纯文本界面，让你专注于学习本身
+- ⚡ **快速高效** - 无需启动浏览器或应用，秒开即用
+- 💻 **极客风格** - 在熟悉的终端环境中学习，更有仪式感
+- 📊 **精美报告** - 自动生成 HTML 学习报告，随时回顾
+- 🔄 **智能去重** - 自动记录已学词汇，确保每次都是新内容
 
-## 🚀 快速开始
+## 🌟 核心功能特色
 
-### 系统要求
+### 📚 词汇学习模式 - 智能出题，永不重复
 
-- .NET 9.0 SDK 或更高版本
-- Google Gemini API 密钥
+**特色亮点：**
+- ✨ **AI 智能出题** - 基于 Google Gemini AI，从雅思官方词汇范围中智能生成题目
+- 🎲 **主题丰富** - 22 个主题领域，涵盖自然地理、科技发明、文化历史等
+- 🚫 **智能去重** - 自动记录已使用的词汇和例句，确保每次练习都是新内容
+- 📈 **词性平衡** - 自动平衡名词、动词、形容词等不同词性
+- 🇺🇸 **美式发音** - 所有音标使用美式英语发音（US pronunciation）
+- ⏱️ **快速生成** - 优化后的批量生成算法，3 个单词仅需 10-15 秒
+- 📝 **翻译练习** - 交互式翻译练习，AI 实时评估并给出详细解析
+- 📊 **学习报告** - 生成包含平均分、高分统计等详细数据的 HTML 报告
 
-### 安装步骤
-
-1. **克隆或下载项目**
-   ```bash
-   git clone <repository-url>
-   cd IELTS-Learning-Tool
-   ```
-
-2. **配置 API 密钥**
-   
-   编辑 `config.json` 文件，将 `YOUR_API_KEY_HERE` 替换为你的 Google Gemini API 密钥：
-   ```json
-   {
-     "GoogleApiKey": "YOUR_API_KEY_HERE",
-     "WordCount": 20,
-     "Topics": [...],
-     "ArticleKeyWordsCount": 15
-   }
-   ```
-
-   或者运行程序时，如果配置文件中没有 API 密钥，程序会提示你输入。
-
-3. **运行程序**
-   ```bash
-   dotnet run
-   ```
-
-## 📖 使用方法
-
-### 命令行参数
-
-程序支持以下命令行参数：
-
+**使用示例：**
 ```bash
-# 显示帮助信息
-dotnet run -- --help
-dotnet run -- -h
-
-# 单词学习模式（默认）
-dotnet run -- --words
-dotnet run -- -w
-
-# 每日文章模式
-dotnet run -- --article
-dotnet run -- -a
-
-# 无参数运行（默认单词学习模式）
-dotnet run
+./IELTS-Learning-Tool --words
 ```
 
-### 单词学习模式
-
-1. 运行程序后，程序会从配置的主题中随机选择指定数量的单词
-2. 对每个单词，你需要将给出的英文例句翻译成中文
-3. 输入 `Pass` 可以跳过当前单词
-4. 完成后，程序会评估你的翻译并生成 HTML 报告
-
-### 每日文章模式
-
-1. 运行程序后，程序会随机选择一个主题
-2. 自动生成英文文章、中文翻译和重点词汇
-3. 生成包含完整内容的 HTML 报告
-
-## ⚙️ 配置文件
-
-`config.json` 文件包含以下配置项：
-
-```json
-{
-  "GoogleApiKey": "YOUR_API_KEY_HERE",    // Google Gemini API 密钥
-  "WordCount": 20,                        // 单词学习模式一次出题数量
-  "Topics": [                             // 主题列表
-    "natural geography",
-    "plant research",
-    "animal protection",
-    ...
-  ],
-  "ArticleKeyWordsCount": 15              // 每日文章模式提取的重点词汇数量
-}
-```
-
-### 配置说明
-
-- **GoogleApiKey**: Google Gemini API 密钥，可以从 [Google AI Studio](https://makersuite.google.com/app/apikey) 获取
-- **WordCount**: 单词学习模式每次练习的单词数量（默认 20）
-- **Topics**: 可用的主题列表，你可以根据需要添加或修改主题
-- **ArticleKeyWordsCount**: 文章模式中提取的重点词汇数量（默认 15）
-
-## 📁 项目结构
-
-```
-IELTS-Learning-Tool/
-├── Models/                          # 数据模型
-│   ├── Article.cs                  # 文章模型
-│   └── VocabularyWord.cs           # 词汇模型
-│
-├── Services/                        # 服务层
-│   ├── GeminiService.cs            # Gemini API 服务
-│   └── ReportGenerator.cs          # HTML 报告生成服务
-│
-├── Configuration/                   # 配置相关
-│   ├── AppConfig.cs                # 配置模型
-│   └── ConfigLoader.cs             # 配置加载器
-│
-├── Utils/                           # 工具类
-│   ├── ArgumentParser.cs           # 命令行参数解析
-│   ├── ArticleGenerationProgress.cs # 进度跟踪
-│   ├── EnumerableHelper.cs         # 枚举辅助方法
-│   ├── HelpDisplay.cs              # 帮助信息显示
-│   ├── HtmlHelper.cs               # HTML 工具
-│   └── ProgressDisplay.cs          # 进度显示
-│
-├── Program.cs                       # 主程序入口
-├── config.json                      # 配置文件
-└── IELTS-Learning-Tool.csproj      # 项目文件
-```
-
-## 🎯 使用示例
-
-### 示例 1: 运行单词学习模式
-
-```bash
-dotnet run -- --words
-```
-
-输出示例：
+你会看到：
 ```
 --- IELTS Vocabulary Learning Mode ---
 
-Fetching 20 new IELTS words for you... Please wait.
+Fetching 3 new IELTS words for you... Please wait.
 
-Successfully fetched 20 words. Let's begin!
-----------------------------------------------------
+Successfully fetched 3 words. Let's begin!
 
-Question 1/20
+Question 1/3
 Word: ubiquitous
-Phonetics: /juːˈbɪkwɪtəs/
+Phonetics: /juˈbɪkwɪtəs/
 Definition: adj. 普遍存在的；无所不在的
 
 Please translate the following sentence into Chinese:
@@ -168,44 +50,193 @@ The company's logo has become ubiquitous all over the world.
 Your translation: 
 ```
 
-### 示例 2: 运行每日文章模式
+### 📖 每日文章模式 - 个性化阅读，全面提升
 
+**特色亮点：**
+- 📰 **AI 生成文章** - 根据主题自动生成 500-1000 词的雅思水平文章
+- 🌍 **主题随机** - 从 22 个主题中随机选择，每次都是新体验
+- 🔄 **双语对照** - 自动生成完整的中文翻译，方便理解
+- 📚 **重点词汇** - 智能提取文章中的重点词汇，含音标、释义、例句
+- 📊 **进度显示** - 实时显示生成进度（10% → 30% → 60% → 80% → 100%）
+- 🎨 **精美报告** - 生成包含原文、翻译、词汇表的精美 HTML 报告
+
+**使用示例：**
 ```bash
-dotnet run -- --article
+./IELTS-Learning-Tool --article
 ```
 
-输出示例：
+你会看到：
 ```
 --- IELTS Daily Article Mode ---
 
-[|] 已选择主题: natural geography，正在生成文章内容... (0%)
-[/] 文章内容生成完成，正在生成中文翻译... (40%)
-[-] 翻译完成，正在提取重点词汇... (75%)
+[|] 已选择主题: technological inventions，正在生成文章内容... (10%)
+[/] 文章内容生成完成，正在生成中文翻译... (30%)
+[-] 翻译完成，正在提取重点词汇... (60%)
 [\] 完成！ (100%)
 
-成功生成文章！主题: natural geography
-文章长度: 1245 字符
+成功生成文章！主题: technological inventions
+文章长度: 5225 字符
 重点词汇: 15 个
-正在生成 HTML 报告...
-
-文章报告已成功生成到项目目录。
 ```
+
+## 🚀 快速开始
+
+### 系统要求
+
+- .NET 9.0 SDK 或更高版本
+- Google Gemini API 密钥（[免费获取](https://makersuite.google.com/app/apikey)）
+
+### 安装步骤
+
+1. **克隆项目**
+   ```bash
+   git clone <repository-url>
+   cd IELTS-Learning-Tool
+   ```
+
+2. **配置 API 密钥**
+   
+   编辑 `config.json` 文件：
+   ```json
+   {
+     "GoogleApiKey": "YOUR_GOOGLE_GEMINI_API_KEY",
+     "WordCount": 20,
+     "Topics": [...],
+     "ArticleKeyWordsCount": 15
+   }
+   ```
+   
+   或者运行程序时，程序会安全地提示你输入 API 密钥（输入时显示 `*` 号）。
+
+3. **运行程序**
+   ```bash
+   # 开发模式
+   dotnet run -- --words
+   
+   # 或发布后运行
+   ./IELTS-Learning-Tool --words
+   ```
+
+## 📖 使用方法
+
+### 命令行参数
+
+```bash
+# 显示帮助信息
+./IELTS-Learning-Tool --help
+./IELTS-Learning-Tool -h
+
+# 词汇学习模式
+./IELTS-Learning-Tool --words
+./IELTS-Learning-Tool -w
+
+# 每日文章模式
+./IELTS-Learning-Tool --article
+./IELTS-Learning-Tool -a
+```
+
+### 词汇学习流程
+
+1. **启动程序** - 运行 `--words` 模式
+2. **智能出题** - AI 从雅思词汇范围中生成题目，自动避免重复
+3. **翻译练习** - 将英文例句翻译成中文（支持中文输入，删除时自动处理宽字符）
+4. **跳过选项** - 输入 `Pass` 可跳过当前题目（红色显示）
+5. **AI 评估** - 程序自动评估你的翻译，给出分数和详细解析
+6. **生成报告** - 自动生成包含统计数据的 HTML 学习报告
+
+### 文章学习流程
+
+1. **启动程序** - 运行 `--article` 模式
+2. **选择主题** - 从配置的主题中随机选择
+3. **生成内容** - AI 自动生成文章、翻译和重点词汇
+4. **查看报告** - 打开生成的 HTML 报告，包含完整的学习内容
+
+## ⚙️ 配置文件
+
+`config.json` 文件包含以下配置项：
+
+```json
+{
+  "GoogleApiKey": "YOUR_GOOGLE_GEMINI_API_KEY",  // Google Gemini API 密钥
+  "WordCount": 20,                               // 单词学习模式一次出题数量
+  "Topics": [                                     // 主题列表（22个主题）
+    "natural geography",
+    "plant research",
+    "animal protection",
+    "space exploration",
+    "school education",
+    "technological inventions",
+    "cultural history",
+    "language evolution",
+    "entertainment and sports",
+    "materials and substances",
+    "fashion trends",
+    "diet and health",
+    "architecture and places",
+    "transport and travel",
+    "international government",
+    "social economy",
+    "laws and regulations",
+    "battlefield conflicts",
+    "social roles",
+    "behaviors and actions",
+    "body and health",
+    "time and dates"
+  ],
+  "ArticleKeyWordsCount": 15                      // 文章模式提取的重点词汇数量
+}
+```
+
+### 配置说明
+
+- **GoogleApiKey**: Google Gemini API 密钥，可以从 [Google AI Studio](https://makersuite.google.com/app/apikey) 免费获取
+- **WordCount**: 单词学习模式每次练习的单词数量（建议 3-50）
+- **Topics**: 可用的主题列表，你可以根据需要添加或修改主题
+- **ArticleKeyWordsCount**: 文章模式中提取的重点词汇数量（建议 10-30）
+
+## 🎯 核心优势
+
+### 1. 智能去重系统
+- 自动记录已使用的词汇和例句
+- 确保每次练习都是新内容
+- 使用记录持久化保存（`usage_record.json`）
+
+### 2. 优化的性能
+- 批量生成算法，大幅提升速度
+- 3 个单词仅需 10-15 秒（优化前需要 60 秒）
+- 智能补充机制，确保数量充足
+
+### 3. 中文输入优化
+- 完美支持中文输入
+- 删除时自动处理宽字符（中文字符占 2 个位置）
+- 流畅的输入体验
+
+### 4. 精美的学习报告
+- 词汇学习报告包含：
+  - 📊 平均分数统计
+  - 📈 高分/中等/低分分布
+  - 📝 详细翻译解析
+  - 🎨 现代化的卡片式设计
+- 文章学习报告包含：
+  - 📰 完整英文原文
+  - 🇨🇳 完整中文翻译
+  - 📚 重点词汇表（含音标、释义、例句）
 
 ## 📊 报告文件
 
 程序会在项目目录下生成以下类型的报告文件：
 
-- **单词学习报告**: `IELTS_Report_YYYYMMDD_HHMMSS.html`
-- **每日文章报告**: `IELTS_Article_YYYYMMDD_HHMMSS.html`
+- **词汇学习报告**: `IELTS_Report_YYYYMMDD_HHMMSS.html`
+- **文章学习报告**: `IELTS_Article_YYYYMMDD_HHMMSS.html`
 
-报告文件包含时间戳，方便区分不同时间生成的内容。
+报告文件包含时间戳，方便区分不同时间生成的内容。可以直接在浏览器中打开查看。
 
 ## 🛠️ 技术栈
 
-- **.NET 9.0**: 跨平台应用程序框架
-- **Google Gemini API**: AI 文本生成服务
-- **Microsoft.Extensions.Configuration**: 配置管理
-- **HTML/CSS**: 报告样式
+- **.NET 9.0** - 跨平台应用程序框架
+- **Google Gemini API** - AI 文本生成服务
+- **Microsoft.Extensions.Configuration** - 配置管理
+- **HTML/CSS** - 精美的报告样式
 
 ## 📝 开发说明
 
@@ -215,17 +246,53 @@ dotnet run -- --article
 dotnet build
 ```
 
-### 运行测试
+### 发布项目
 
-确保配置文件正确后，直接运行程序进行测试。
+```bash
+# 发布为单文件可执行程序
+dotnet publish -c Release -r osx-arm64 --self-contained true -p:PublishSingleFile=true
 
-### 扩展功能
+# 发布后，可执行文件位于：
+# bin/Release/net9.0/osx-arm64/publish/IELTS-Learning-Tool
+```
 
-项目采用模块化设计，易于扩展：
+### 项目结构
 
-- 添加新的学习模式：在 `Program.cs` 中添加新的模式处理方法
-- 修改报告样式：编辑 `Services/ReportGenerator.cs` 中的 HTML 模板
-- 添加新主题：在 `config.json` 的 `Topics` 数组中添加
+```
+IELTS-Learning-Tool/
+├── Models/                          # 数据模型
+│   ├── Article.cs                   # 文章模型
+│   ├── VocabularyWord.cs            # 词汇模型
+│   └── UsageRecord.cs               # 使用记录模型
+│
+├── Services/                         # 服务层
+│   ├── GeminiService.cs             # Gemini API 服务
+│   ├── ReportGenerator.cs           # HTML 报告生成服务
+│   └── UsageTrackerService.cs       # 使用记录跟踪服务
+│
+├── Configuration/                    # 配置相关
+│   ├── AppConfig.cs                 # 配置模型
+│   └── ConfigLoader.cs              # 配置加载器
+│
+├── Utils/                            # 工具类
+│   ├── ArgumentParser.cs            # 命令行参数解析
+│   ├── ArticleGenerationProgress.cs # 进度跟踪
+│   ├── EnumerableHelper.cs          # 枚举辅助方法
+│   ├── HelpDisplay.cs              # 帮助信息显示
+│   ├── HtmlHelper.cs                # HTML 工具
+│   └── ProgressDisplay.cs           # 进度显示
+│
+├── Program.cs                        # 主程序入口
+├── config.json                       # 配置文件
+└── IELTS-Learning-Tool.csproj       # 项目文件
+```
+
+## 💡 使用技巧
+
+1. **重置使用记录** - 如果想重新学习已学过的词汇，删除 `usage_record.json` 文件即可
+2. **调整出题数量** - 在 `config.json` 中修改 `WordCount`，建议 3-50 个
+3. **自定义主题** - 在 `config.json` 的 `Topics` 数组中添加或修改主题
+4. **查看报告** - 生成的 HTML 报告可以直接在浏览器中打开，支持打印和分享
 
 ## 🤝 贡献
 
@@ -235,11 +302,6 @@ dotnet build
 
 本项目采用 MIT 许可证。
 
-## 📧 联系方式
-
-如有问题或建议，请提交 Issue。
-
 ---
 
-**祝您雅思学习顺利！** 🎉
-
+**在终端中学习英语，专注、高效、无干扰。开始你的雅思学习之旅吧！** 🎉
