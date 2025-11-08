@@ -148,7 +148,7 @@ namespace IELTS_Learning_Tool.Services
         }
         
         /// <summary>
-        /// 使用AI从雅思词汇中生成题目，避免重复
+        /// 使用AI从雅思词汇中生成题目，避免重复（优化版：确保数量充足，提升速度）
         /// </summary>
         private async Task<List<VocabularyWord>> GetWordsFromAIWithAntiRepeatAsync(
             int wordCount, 
@@ -156,56 +156,131 @@ namespace IELTS_Learning_Tool.Services
             List<string> usedWords,
             List<string> usedSentences)
         {
-            // 构建避免重复的提示词
-            string antiRepeatContext = "";
-            if (usedWords.Count > 0)
+            var allUniqueWords = new List<VocabularyWord>();
+            var allSeenWords = new HashSet<string>(usedWords, StringComparer.OrdinalIgnoreCase);
+            var allSeenSentences = new HashSet<string>(usedSentences.Select(NormalizeSentence), StringComparer.OrdinalIgnoreCase);
+            
+            int maxAttempts = 3; // 最多尝试3次
+            int requestCount = Math.Max(wordCount, wordCount + 5); // 请求更多词汇以确保有足够候选
+            
+            for (int attempt = 0; attempt < maxAttempts && allUniqueWords.Count < wordCount; attempt++)
             {
-                var usedWordsSample = usedWords.Take(50).ToList(); // 最多显示50个已使用的词汇
+                int remainingCount = wordCount - allUniqueWords.Count;
+                int currentRequestCount = attempt == 0 ? requestCount : remainingCount + 3; // 第一次请求更多，后续请求刚好够的数量
+                
+                var words = await GenerateWordsBatchAsync(currentRequestCount, topics, allSeenWords, allSeenSentences, attempt);
+                
+                if (words == null || words.Count == 0)
+                {
+                    break;
+                }
+                
+                // 快速去重处理（不重新生成例句，直接跳过重复的）
+                foreach (var word in words)
+                {
+                    if (allUniqueWords.Count >= wordCount)
+                    {
+                        break;
+                    }
+                    
+                    if (string.IsNullOrWhiteSpace(word.Word))
+                        continue;
+                    
+                    var normalizedWord = word.Word.Trim().ToLower();
+                    if (allSeenWords.Contains(normalizedWord))
+                    {
+                        continue; // 跳过重复词汇
+                    }
+                    
+                    // 检查例句是否重复（如果重复，直接跳过，不重新生成以提升速度）
+                    bool sentenceIsUnique = true;
+                    if (!string.IsNullOrWhiteSpace(word.Sentence))
+                    {
+                        var normalizedSentence = NormalizeSentence(word.Sentence);
+                        if (allSeenSentences.Contains(normalizedSentence))
+                        {
+                            sentenceIsUnique = false;
+                        }
+                        else
+                        {
+                            allSeenSentences.Add(normalizedSentence);
+                        }
+                    }
+                    
+                    // 如果词汇和例句都唯一，添加
+                    if (sentenceIsUnique)
+                    {
+                        allSeenWords.Add(normalizedWord);
+                        allUniqueWords.Add(word);
+                        
+                        // 记录使用的词汇和例句
+                        if (_usageTrackerService != null)
+                        {
+                            _usageTrackerService.RecordWord(word.Word);
+                            if (!string.IsNullOrWhiteSpace(word.Sentence))
+                            {
+                                _usageTrackerService.RecordSentence(word.Sentence);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 如果仍然不足，给出提示
+            if (allUniqueWords.Count < wordCount)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"提示: 获得 {allUniqueWords.Count} 个唯一词汇（请求 {wordCount} 个）。可能已使用的词汇较多，建议重置使用记录。");
+                Console.ResetColor();
+            }
+            
+            return allUniqueWords.Take(wordCount).ToList();
+        }
+        
+        /// <summary>
+        /// 批量生成词汇（一次性生成，不单独处理例句）
+        /// </summary>
+        private async Task<List<VocabularyWord>> GenerateWordsBatchAsync(
+            int wordCount,
+            List<string> topics,
+            HashSet<string> excludeWords,
+            HashSet<string> excludeSentences,
+            int attempt)
+        {
+            // 构建避免重复的提示词（只显示部分，避免prompt过长）
+            string antiRepeatContext = "";
+            if (excludeWords.Count > 0 && attempt == 0) // 只在第一次尝试时显示
+            {
+                var usedWordsSample = excludeWords.Take(30).ToList(); // 减少显示数量以加快速度
                 antiRepeatContext = $@"
 
 IMPORTANT - AVOID REPETITION:
-The following words have already been used in previous sessions. Please DO NOT use these words:
+The following words have already been used. Please DO NOT use them:
 {string.Join(", ", usedWordsSample)}
-{(usedWords.Count > 50 ? $"\n(And {usedWords.Count - 50} more words that have been used previously)" : "")}
+{(excludeWords.Count > 30 ? $"\n(And {excludeWords.Count - 30} more words)" : "")}
 
-Please select COMPLETELY DIFFERENT words that are appropriate for IELTS examination.";
-            }
-            
-            // 构建例句去重提示
-            string sentenceContext = "";
-            if (usedSentences.Count > 0)
-            {
-                var usedSentencesSample = usedSentences.Take(20).ToList(); // 最多显示20个已使用的例句
-                sentenceContext = $@"
-
-IMPORTANT - UNIQUE SENTENCES:
-Please ensure that the example sentences are COMPLETELY DIFFERENT from these previously used sentences:
-{string.Join("\n", usedSentencesSample.Select((s, i) => $"{i + 1}. {s}"))}
-{(usedSentences.Count > 20 ? $"\n(And {usedSentences.Count - 20} more sentences that have been used previously)" : "")}
-
-Each sentence must be unique, creative, and demonstrate the word's meaning in a different context.";
+Please select COMPLETELY DIFFERENT words.";
             }
             
             var prompt = $@"
-You are an IELTS vocabulary expert. Please provide EXACTLY {wordCount} IELTS core vocabulary words from the following topics: {string.Join(", ", topics)}.
+You are an IELTS vocabulary expert. Please provide {wordCount} IELTS core vocabulary words from the following topics: {string.Join(", ", topics)}.
 
 CRITICAL REQUIREMENTS:
-1. You MUST return EXACTLY {wordCount} words, no more, no less.
-2. Select words that are commonly tested in IELTS examinations (band 6.5-8.0 level).
-3. Ensure diversity in parts of speech (include nouns, verbs, adjectives, adverbs, etc.).
+1. Return EXACTLY {wordCount} words (or as close as possible).
+2. Select words commonly tested in IELTS examinations (band 6.5-8.0 level).
+3. Ensure diversity in parts of speech (nouns, verbs, adjectives, adverbs, etc.).
 4. Each word must be relevant to the given topics.
 5. For each word, provide:
    - Accurate phonetics in American English pronunciation (IPA format, US pronunciation)
    - Chinese definition (including part of speech and comprehensive meaning)
    - A unique, natural example sentence that clearly demonstrates the word's usage
-6. The example sentences should be varied, creative, and appropriate for academic English.
+6. All example sentences must be unique and creative.
 7. Use American English phonetics (US pronunciation) for all words.
 {antiRepeatContext}
-{sentenceContext}
 
-Return the response as a valid JSON array. Each object in the array must have the following keys: ""word"", ""phonetics"", ""definition"", ""sentence"".
+Return the response as a valid JSON array. Each object must have: ""word"", ""phonetics"", ""definition"", ""sentence"".
 
-Example format (use American English phonetics):
+Example format:
 [
   {{
     ""word"": ""ubiquitous"",
@@ -221,13 +296,16 @@ Example format (use American English phonetics):
   }}
 ]
 
-REMEMBER: Return EXACTLY {wordCount} words, and use American English (US) pronunciation for all phonetics.";
+Return the JSON array now:";
 
             string response = await CallGeminiApiAsync(prompt);
 
             if (response.StartsWith("Error:"))
             {
-                Console.WriteLine(response);
+                if (attempt == 0) // 只在第一次失败时显示错误
+                {
+                    Console.WriteLine(response);
+                }
                 return new List<VocabularyWord>();
             }
             
@@ -235,185 +313,16 @@ REMEMBER: Return EXACTLY {wordCount} words, and use American English (US) pronun
             {
                 var cleanedJson = CleanJsonResponse(response);
                 var words = JsonSerializer.Deserialize<List<VocabularyWord>>(cleanedJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                
-                if (words == null || words.Count == 0)
-                {
-                    return new List<VocabularyWord>();
-                }
-                
-                // 严格限制返回数量为配置的数量
-                // 如果AI返回的数量超过请求的数量，只取前N个
-                if (words.Count > wordCount)
-                {
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine($"警告: AI返回了 {words.Count} 个词汇，但配置要求 {wordCount} 个。将只使用前 {wordCount} 个。");
-                    Console.ResetColor();
-                    words = words.Take(wordCount).ToList();
-                }
-                
-                // 验证并去重（检查AI返回的词汇是否重复）
-                var uniqueWords = new List<VocabularyWord>();
-                var seenWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var seenSentences = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                
-                foreach (var word in words)
-                {
-                    // 如果已经达到目标数量，停止处理
-                    if (uniqueWords.Count >= wordCount)
-                    {
-                        break;
-                    }
-                    
-                    // 检查词汇是否重复
-                    if (string.IsNullOrWhiteSpace(word.Word))
-                        continue;
-                    
-                    var normalizedWord = word.Word.Trim().ToLower();
-                    if (seenWords.Contains(normalizedWord) || 
-                        (usedWords.Count > 0 && usedWords.Contains(normalizedWord, StringComparer.OrdinalIgnoreCase)))
-                    {
-                        continue; // 跳过重复的词汇
-                    }
-                    
-                    // 检查例句是否重复
-                    if (!string.IsNullOrWhiteSpace(word.Sentence))
-                    {
-                        var normalizedSentence = NormalizeSentence(word.Sentence);
-                        if (seenSentences.Contains(normalizedSentence) ||
-                            (usedSentences.Count > 0 && usedSentences.Any(s => NormalizeSentence(s).Equals(normalizedSentence, StringComparison.OrdinalIgnoreCase))))
-                        {
-                            // 如果例句重复，尝试生成新的例句
-                            word.Sentence = await GenerateUniqueSentenceForWordAsync(word.Word, word.Definition, seenSentences, usedSentences);
-                            normalizedSentence = NormalizeSentence(word.Sentence);
-                            if (seenSentences.Contains(normalizedSentence))
-                            {
-                                continue; // 如果生成后仍然重复，跳过
-                            }
-                        }
-                        seenSentences.Add(normalizedSentence);
-                    }
-                    
-                    seenWords.Add(normalizedWord);
-                    uniqueWords.Add(word);
-                    
-                    // 记录使用的词汇和例句
-                    if (_usageTrackerService != null)
-                    {
-                        _usageTrackerService.RecordWord(word.Word);
-                        if (!string.IsNullOrWhiteSpace(word.Sentence))
-                        {
-                            _usageTrackerService.RecordSentence(word.Sentence);
-                        }
-                    }
-                }
-                
-                // 如果去重后数量不足，给出警告
-                if (uniqueWords.Count < wordCount)
-                {
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine($"提示: 去重后获得 {uniqueWords.Count} 个词汇（请求 {wordCount} 个）。");
-                    Console.ResetColor();
-                }
-                
-                return uniqueWords;
+                return words ?? new List<VocabularyWord>();
             }
             catch (JsonException ex)
             {
-                Console.WriteLine($"Failed to deserialize word list JSON: {ex.Message}");
-                Console.WriteLine($"Raw response was: {response}");
+                if (attempt == 0) // 只在第一次失败时显示错误
+                {
+                    Console.WriteLine($"Failed to deserialize word list JSON: {ex.Message}");
+                }
                 return new List<VocabularyWord>();
             }
-        }
-        
-        /// <summary>
-        /// 为词汇生成唯一的例句
-        /// </summary>
-        private async Task<string> GenerateUniqueSentenceForWordAsync(
-            string word, 
-            string definition,
-            HashSet<string> currentSentences,
-            List<string> usedSentences)
-        {
-            var prompt = $@"
-Generate a NEW and UNIQUE example sentence for the IELTS vocabulary word: ""{word}"".
-
-Word: {word}
-Definition: {definition}
-
-Requirements:
-1. The sentence must be at IELTS academic level.
-2. The sentence should clearly demonstrate the word's meaning and usage.
-3. The sentence must be grammatically correct and natural.
-4. The sentence should be CREATIVE and DIFFERENT from common examples.
-5. Do NOT use the word in an obvious or repetitive way.
-6. Return ONLY the sentence, without quotes, numbering, or additional text.
-7. Use American English spelling and expressions.
-
-Generate a unique sentence now:";
-
-            // 最多尝试3次生成不重复的例句
-            for (int attempt = 0; attempt < 3; attempt++)
-            {
-                string response = await CallGeminiApiAsync(prompt);
-                
-                if (response.StartsWith("Error:"))
-                {
-                    continue;
-                }
-                
-                var sentence = CleanSentenceResponse(response);
-                if (string.IsNullOrWhiteSpace(sentence))
-                {
-                    continue;
-                }
-                
-                var normalized = NormalizeSentence(sentence);
-                
-                // 检查是否与当前批次重复
-                if (currentSentences.Contains(normalized))
-                {
-                    continue;
-                }
-                
-                // 检查是否与历史记录重复
-                if (usedSentences.Any(s => NormalizeSentence(s).Equals(normalized, StringComparison.OrdinalIgnoreCase)))
-                {
-                    continue;
-                }
-                
-                // 找到唯一例句
-                return sentence;
-            }
-            
-            // 如果所有尝试都失败，返回一个基本例句
-            return $"The word '{word}' is commonly used in academic contexts.";
-        }
-        
-        /// <summary>
-        /// 清理AI返回的句子
-        /// </summary>
-        private string CleanSentenceResponse(string response)
-        {
-            if (string.IsNullOrWhiteSpace(response))
-                return "";
-            
-            var cleaned = response.Trim();
-            
-            // 移除可能的引号
-            if (cleaned.StartsWith("\"") && cleaned.EndsWith("\""))
-            {
-                cleaned = cleaned.Substring(1, cleaned.Length - 2);
-            }
-            if (cleaned.StartsWith("'") && cleaned.EndsWith("'"))
-            {
-                cleaned = cleaned.Substring(1, cleaned.Length - 2);
-            }
-            
-            // 移除可能的编号或标记
-            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"^\d+[\.\)]\s*", "");
-            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"^[-\*]\s*", "");
-            
-            return cleaned.Trim();
         }
         
         /// <summary>
