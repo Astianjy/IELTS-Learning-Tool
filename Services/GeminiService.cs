@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using IELTS_Learning_Tool.Configuration;
 using IELTS_Learning_Tool.Models;
@@ -11,19 +13,31 @@ using IELTS_Learning_Tool.Utils;
 
 namespace IELTS_Learning_Tool.Services
 {
-    public class GeminiService
+    public class GeminiService : IDisposable
     {
         private readonly HttpClient _httpClient;
         private readonly string _apiKey;
+        private readonly UsageTrackerService? _usageTrackerService;
+        private const int MaxRetries = 3;
+        private const int RetryDelayMs = 1000;
 
-        public GeminiService(AppConfig config)
+        public GeminiService(
+            AppConfig config, 
+            UsageTrackerService? usageTrackerService = null)
         {
             _apiKey = config.GoogleApiKey;
+            _usageTrackerService = usageTrackerService;
             _httpClient = new HttpClient();
+            _httpClient.Timeout = TimeSpan.FromSeconds(120); // 设置超时时间为120秒
             _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         }
+        
+        public void Dispose()
+        {
+            _httpClient?.Dispose();
+        }
 
-        private async Task<string> CallGeminiApiAsync(string prompt)
+        private async Task<string> CallGeminiApiAsync(string prompt, int retryCount = 0)
         {
             var url = $"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={_apiKey}";
 
@@ -43,17 +57,49 @@ namespace IELTS_Learning_Tool.Services
 
             var jsonContent = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.PostAsync(url, jsonContent);
+            try
+            {
+                var response = await _httpClient.PostAsync(url, jsonContent);
 
-            if (response.IsSuccessStatusCode)
-            {
-                var responseBody = await response.Content.ReadAsStringAsync();
-                return ParseResponse(responseBody);
+                if (response.IsSuccessStatusCode)
+                {
+                    var responseBody = await response.Content.ReadAsStringAsync();
+                    return ParseResponse(responseBody);
+                }
+                else
+                {
+                    var errorBody = await response.Content.ReadAsStringAsync();
+                    
+                    // 对于特定错误码，进行重试
+                    if ((response.StatusCode == System.Net.HttpStatusCode.TooManyRequests || 
+                         response.StatusCode == System.Net.HttpStatusCode.InternalServerError ||
+                         response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable) && 
+                        retryCount < MaxRetries)
+                    {
+                        await Task.Delay(RetryDelayMs * (retryCount + 1)); // 指数退避
+                        return await CallGeminiApiAsync(prompt, retryCount + 1);
+                    }
+                    
+                    return $"Error: {response.StatusCode} - {errorBody}";
+                }
             }
-            else
+            catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
             {
-                var errorBody = await response.Content.ReadAsStringAsync();
-                return $"Error: {response.StatusCode} - {errorBody}";
+                if (retryCount < MaxRetries)
+                {
+                    await Task.Delay(RetryDelayMs * (retryCount + 1));
+                    return await CallGeminiApiAsync(prompt, retryCount + 1);
+                }
+                return $"Error: Request timeout after {retryCount + 1} attempts";
+            }
+            catch (HttpRequestException ex)
+            {
+                if (retryCount < MaxRetries)
+                {
+                    await Task.Delay(RetryDelayMs * (retryCount + 1));
+                    return await CallGeminiApiAsync(prompt, retryCount + 1);
+                }
+                return $"Error: Network error - {ex.Message}";
             }
         }
 
@@ -88,21 +134,94 @@ namespace IELTS_Learning_Tool.Services
 
         public async Task<List<VocabularyWord>> GetIeltsWordsAsync(int wordCount, List<string> topics)
         {
-            var prompt = $@"
-Please provide {wordCount} random IELTS core vocabulary words. Select them from the following topics: {string.Join(", ", topics)}.
-For each word, provide its phonetics, its Chinese definition (including part of speech and comprehensive meaning), and an example sentence.
-Return the response as a valid JSON array. Each object in the array should have the following keys: ""word"", ""phonetics"", ""definition"", ""sentence"".
+            // 获取已使用的词汇和例句，避免重复
+            var usedWords = _usageTrackerService != null
+                ? _usageTrackerService.GetRecord().UsedWords.ToList()
+                : new List<string>();
+            
+            var usedSentences = _usageTrackerService != null
+                ? _usageTrackerService.GetRecord().UsedSentences.ToList()
+                : new List<string>();
+            
+            // 使用AI从雅思词汇中生成题目，避免重复
+            return await GetWordsFromAIWithAntiRepeatAsync(wordCount, topics, usedWords, usedSentences);
+        }
+        
+        /// <summary>
+        /// 使用AI从雅思词汇中生成题目，避免重复
+        /// </summary>
+        private async Task<List<VocabularyWord>> GetWordsFromAIWithAntiRepeatAsync(
+            int wordCount, 
+            List<string> topics, 
+            List<string> usedWords,
+            List<string> usedSentences)
+        {
+            // 构建避免重复的提示词
+            string antiRepeatContext = "";
+            if (usedWords.Count > 0)
+            {
+                var usedWordsSample = usedWords.Take(50).ToList(); // 最多显示50个已使用的词汇
+                antiRepeatContext = $@"
 
-Example format:
+IMPORTANT - AVOID REPETITION:
+The following words have already been used in previous sessions. Please DO NOT use these words:
+{string.Join(", ", usedWordsSample)}
+{(usedWords.Count > 50 ? $"\n(And {usedWords.Count - 50} more words that have been used previously)" : "")}
+
+Please select COMPLETELY DIFFERENT words that are appropriate for IELTS examination.";
+            }
+            
+            // 构建例句去重提示
+            string sentenceContext = "";
+            if (usedSentences.Count > 0)
+            {
+                var usedSentencesSample = usedSentences.Take(20).ToList(); // 最多显示20个已使用的例句
+                sentenceContext = $@"
+
+IMPORTANT - UNIQUE SENTENCES:
+Please ensure that the example sentences are COMPLETELY DIFFERENT from these previously used sentences:
+{string.Join("\n", usedSentencesSample.Select((s, i) => $"{i + 1}. {s}"))}
+{(usedSentences.Count > 20 ? $"\n(And {usedSentences.Count - 20} more sentences that have been used previously)" : "")}
+
+Each sentence must be unique, creative, and demonstrate the word's meaning in a different context.";
+            }
+            
+            var prompt = $@"
+You are an IELTS vocabulary expert. Please provide EXACTLY {wordCount} IELTS core vocabulary words from the following topics: {string.Join(", ", topics)}.
+
+CRITICAL REQUIREMENTS:
+1. You MUST return EXACTLY {wordCount} words, no more, no less.
+2. Select words that are commonly tested in IELTS examinations (band 6.5-8.0 level).
+3. Ensure diversity in parts of speech (include nouns, verbs, adjectives, adverbs, etc.).
+4. Each word must be relevant to the given topics.
+5. For each word, provide:
+   - Accurate phonetics in American English pronunciation (IPA format, US pronunciation)
+   - Chinese definition (including part of speech and comprehensive meaning)
+   - A unique, natural example sentence that clearly demonstrates the word's usage
+6. The example sentences should be varied, creative, and appropriate for academic English.
+7. Use American English phonetics (US pronunciation) for all words.
+{antiRepeatContext}
+{sentenceContext}
+
+Return the response as a valid JSON array. Each object in the array must have the following keys: ""word"", ""phonetics"", ""definition"", ""sentence"".
+
+Example format (use American English phonetics):
 [
   {{
     ""word"": ""ubiquitous"",
-    ""phonetics"": ""/juːˈbɪkwɪtəs/"",
+    ""phonetics"": ""/juˈbɪkwɪtəs/"",
     ""definition"": ""adj. 普遍存在的；无所不在的"",
     ""sentence"": ""The company's logo has become ubiquitous all over the world.""
   }},
-  ...
-]";
+  {{
+    ""word"": ""mitigate"",
+    ""phonetics"": ""/ˈmɪtɪˌɡeɪt/"",
+    ""definition"": ""v. 减轻；缓解"",
+    ""sentence"": ""Governments must take action to mitigate the effects of climate change.""
+  }}
+]
+
+REMEMBER: Return EXACTLY {wordCount} words, and use American English (US) pronunciation for all phonetics.";
 
             string response = await CallGeminiApiAsync(prompt);
 
@@ -114,10 +233,89 @@ Example format:
             
             try
             {
-                // Clean the response to ensure it's valid JSON
-                var cleanedJson = response.Trim().Replace("```json", "").Replace("```", "");
+                var cleanedJson = CleanJsonResponse(response);
                 var words = JsonSerializer.Deserialize<List<VocabularyWord>>(cleanedJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                return words ?? new List<VocabularyWord>();
+                
+                if (words == null || words.Count == 0)
+                {
+                    return new List<VocabularyWord>();
+                }
+                
+                // 严格限制返回数量为配置的数量
+                // 如果AI返回的数量超过请求的数量，只取前N个
+                if (words.Count > wordCount)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"警告: AI返回了 {words.Count} 个词汇，但配置要求 {wordCount} 个。将只使用前 {wordCount} 个。");
+                    Console.ResetColor();
+                    words = words.Take(wordCount).ToList();
+                }
+                
+                // 验证并去重（检查AI返回的词汇是否重复）
+                var uniqueWords = new List<VocabularyWord>();
+                var seenWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var seenSentences = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                
+                foreach (var word in words)
+                {
+                    // 如果已经达到目标数量，停止处理
+                    if (uniqueWords.Count >= wordCount)
+                    {
+                        break;
+                    }
+                    
+                    // 检查词汇是否重复
+                    if (string.IsNullOrWhiteSpace(word.Word))
+                        continue;
+                    
+                    var normalizedWord = word.Word.Trim().ToLower();
+                    if (seenWords.Contains(normalizedWord) || 
+                        (usedWords.Count > 0 && usedWords.Contains(normalizedWord, StringComparer.OrdinalIgnoreCase)))
+                    {
+                        continue; // 跳过重复的词汇
+                    }
+                    
+                    // 检查例句是否重复
+                    if (!string.IsNullOrWhiteSpace(word.Sentence))
+                    {
+                        var normalizedSentence = NormalizeSentence(word.Sentence);
+                        if (seenSentences.Contains(normalizedSentence) ||
+                            (usedSentences.Count > 0 && usedSentences.Any(s => NormalizeSentence(s).Equals(normalizedSentence, StringComparison.OrdinalIgnoreCase))))
+                        {
+                            // 如果例句重复，尝试生成新的例句
+                            word.Sentence = await GenerateUniqueSentenceForWordAsync(word.Word, word.Definition, seenSentences, usedSentences);
+                            normalizedSentence = NormalizeSentence(word.Sentence);
+                            if (seenSentences.Contains(normalizedSentence))
+                            {
+                                continue; // 如果生成后仍然重复，跳过
+                            }
+                        }
+                        seenSentences.Add(normalizedSentence);
+                    }
+                    
+                    seenWords.Add(normalizedWord);
+                    uniqueWords.Add(word);
+                    
+                    // 记录使用的词汇和例句
+                    if (_usageTrackerService != null)
+                    {
+                        _usageTrackerService.RecordWord(word.Word);
+                        if (!string.IsNullOrWhiteSpace(word.Sentence))
+                        {
+                            _usageTrackerService.RecordSentence(word.Sentence);
+                        }
+                    }
+                }
+                
+                // 如果去重后数量不足，给出警告
+                if (uniqueWords.Count < wordCount)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"提示: 去重后获得 {uniqueWords.Count} 个词汇（请求 {wordCount} 个）。");
+                    Console.ResetColor();
+                }
+                
+                return uniqueWords;
             }
             catch (JsonException ex)
             {
@@ -126,6 +324,116 @@ Example format:
                 return new List<VocabularyWord>();
             }
         }
+        
+        /// <summary>
+        /// 为词汇生成唯一的例句
+        /// </summary>
+        private async Task<string> GenerateUniqueSentenceForWordAsync(
+            string word, 
+            string definition,
+            HashSet<string> currentSentences,
+            List<string> usedSentences)
+        {
+            var prompt = $@"
+Generate a NEW and UNIQUE example sentence for the IELTS vocabulary word: ""{word}"".
+
+Word: {word}
+Definition: {definition}
+
+Requirements:
+1. The sentence must be at IELTS academic level.
+2. The sentence should clearly demonstrate the word's meaning and usage.
+3. The sentence must be grammatically correct and natural.
+4. The sentence should be CREATIVE and DIFFERENT from common examples.
+5. Do NOT use the word in an obvious or repetitive way.
+6. Return ONLY the sentence, without quotes, numbering, or additional text.
+7. Use American English spelling and expressions.
+
+Generate a unique sentence now:";
+
+            // 最多尝试3次生成不重复的例句
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                string response = await CallGeminiApiAsync(prompt);
+                
+                if (response.StartsWith("Error:"))
+                {
+                    continue;
+                }
+                
+                var sentence = CleanSentenceResponse(response);
+                if (string.IsNullOrWhiteSpace(sentence))
+                {
+                    continue;
+                }
+                
+                var normalized = NormalizeSentence(sentence);
+                
+                // 检查是否与当前批次重复
+                if (currentSentences.Contains(normalized))
+                {
+                    continue;
+                }
+                
+                // 检查是否与历史记录重复
+                if (usedSentences.Any(s => NormalizeSentence(s).Equals(normalized, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+                
+                // 找到唯一例句
+                return sentence;
+            }
+            
+            // 如果所有尝试都失败，返回一个基本例句
+            return $"The word '{word}' is commonly used in academic contexts.";
+        }
+        
+        /// <summary>
+        /// 清理AI返回的句子
+        /// </summary>
+        private string CleanSentenceResponse(string response)
+        {
+            if (string.IsNullOrWhiteSpace(response))
+                return "";
+            
+            var cleaned = response.Trim();
+            
+            // 移除可能的引号
+            if (cleaned.StartsWith("\"") && cleaned.EndsWith("\""))
+            {
+                cleaned = cleaned.Substring(1, cleaned.Length - 2);
+            }
+            if (cleaned.StartsWith("'") && cleaned.EndsWith("'"))
+            {
+                cleaned = cleaned.Substring(1, cleaned.Length - 2);
+            }
+            
+            // 移除可能的编号或标记
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"^\d+[\.\)]\s*", "");
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"^[-\*]\s*", "");
+            
+            return cleaned.Trim();
+        }
+        
+        /// <summary>
+        /// 标准化句子用于比较
+        /// </summary>
+        private string NormalizeSentence(string sentence)
+        {
+            if (string.IsNullOrWhiteSpace(sentence))
+                return "";
+            
+            var normalized = sentence.ToLower().Trim();
+            var charsToRemove = new[] { '.', ',', '!', '?', ';', ':', '"', '\'', '(', ')', '[', ']', '{', '}' };
+            foreach (var c in charsToRemove)
+            {
+                normalized = normalized.Replace(c.ToString(), "");
+            }
+            normalized = System.Text.RegularExpressions.Regex.Replace(normalized, @"\s+", " ").Trim();
+            return normalized;
+        }
+        
 
         public async Task<List<VocabularyWord>> EvaluateTranslationsAsync(List<VocabularyWord> words)
         {
@@ -164,7 +472,7 @@ Example output format:
 
             try
             {
-                var cleanedJson = response.Trim().Replace("```json", "").Replace("```", "");
+                var cleanedJson = CleanJsonResponse(response);
                 var results = JsonSerializer.Deserialize<List<JsonElement>>(cleanedJson);
 
                 if (results != null && results.Count == words.Count)
@@ -203,6 +511,7 @@ Example output format:
             // 生成文章的 prompt
             var articlePrompt = $@"
 Please write a comprehensive IELTS-level English article about the topic: ""{selectedTopic}"".
+
 Requirements:
 1. The article should be 500-1000 words long.
 2. The article should have a clear title.
@@ -232,7 +541,7 @@ Example format:
 
             try
             {
-                var cleanedJson = articleResponse.Trim().Replace("```json", "").Replace("```", "");
+                var cleanedJson = CleanJsonResponse(articleResponse);
                 using (JsonDocument doc = JsonDocument.Parse(cleanedJson))
                 {
                     JsonElement root = doc.RootElement;
@@ -285,29 +594,36 @@ Article:
             // 提取重点词汇
             var keyWordsPrompt = $@"
 Please extract {keyWordsCount} key vocabulary words from the following article that are important for IELTS learners.
-For each word, provide its phonetics, its Chinese definition (including part of speech and comprehensive meaning), and an example sentence from the article or a similar context.
-Return the response as a valid JSON array. Each object in the array should have the following keys: ""word"", ""phonetics"", ""definition"", ""sentence"".
+
+For each word, provide:
+- Accurate phonetics in American English pronunciation (IPA format, US pronunciation)
+- Chinese definition (including part of speech and comprehensive meaning)
+- An example sentence from the article or a similar context
+
+Return the response as a valid JSON array. Each object in the array must have the following keys: ""word"", ""phonetics"", ""definition"", ""sentence"".
 
 Article:
 {article.Content}
 
-Example format:
+Example format (use American English phonetics):
 [
   {{
     ""word"": ""ubiquitous"",
-    ""phonetics"": ""/juːˈbɪkwɪtəs/"",
+    ""phonetics"": ""/juˈbɪkwɪtəs/"",
     ""definition"": ""adj. 普遍存在的；无所不在的"",
     ""sentence"": ""The company's logo has become ubiquitous all over the world.""
   }},
   ...
-]";
+]
+
+REMEMBER: Use American English (US) pronunciation for all phonetics.";
 
             string keyWordsResponse = await CallGeminiApiAsync(keyWordsPrompt);
             if (!keyWordsResponse.StartsWith("Error:"))
             {
                 try
                 {
-                    var cleanedJson = keyWordsResponse.Trim().Replace("```json", "").Replace("```", "");
+                    var cleanedJson = CleanJsonResponse(keyWordsResponse);
                     var words = JsonSerializer.Deserialize<List<VocabularyWord>>(cleanedJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                     article.KeyWords = words ?? new List<VocabularyWord>();
                 }
@@ -326,6 +642,32 @@ Example format:
             }
 
             return article;
+        }
+        
+        private string CleanJsonResponse(string response)
+        {
+            if (string.IsNullOrWhiteSpace(response))
+                return "{}";
+                
+            var cleaned = response.Trim();
+            
+            // 移除可能存在的代码块标记
+            if (cleaned.StartsWith("```json", StringComparison.OrdinalIgnoreCase))
+            {
+                cleaned = cleaned.Substring(7).TrimStart();
+            }
+            else if (cleaned.StartsWith("```"))
+            {
+                cleaned = cleaned.Substring(3).TrimStart();
+            }
+            
+            if (cleaned.EndsWith("```", StringComparison.OrdinalIgnoreCase))
+            {
+                cleaned = cleaned.Substring(0, cleaned.Length - 3).TrimEnd();
+            }
+            
+            // 移除前后空白字符
+            return cleaned.Trim();
         }
     }
 }
