@@ -276,6 +276,8 @@ CRITICAL REQUIREMENTS:
    - A unique, natural example sentence that clearly demonstrates the word's usage
 6. All example sentences must be unique and creative.
 7. Use American English phonetics (US pronunciation) for all words.
+8. IMPORTANT: Do NOT use markdown formatting (no **, no *, no bold, no italic) in sentences. Use plain text only.
+9. In example sentences, write the vocabulary word naturally without any special formatting or emphasis.
 {antiRepeatContext}
 
 Return the response as a valid JSON array. Each object must have: ""word"", ""phonetics"", ""definition"", ""sentence"".
@@ -313,6 +315,19 @@ Return the JSON array now:";
             {
                 var cleanedJson = CleanJsonResponse(response);
                 var words = JsonSerializer.Deserialize<List<VocabularyWord>>(cleanedJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                
+                if (words != null)
+                {
+                    // 清理所有句子中的 markdown 格式标记
+                    foreach (var word in words)
+                    {
+                        if (!string.IsNullOrWhiteSpace(word.Sentence))
+                        {
+                            word.Sentence = TextCleaner.CleanSentence(word.Sentence);
+                        }
+                    }
+                }
+                
                 return words ?? new List<VocabularyWord>();
             }
             catch (JsonException ex)
@@ -390,8 +405,13 @@ Example output format:
                     {
                         var result = results[i];
                         words[i].Score = result.GetProperty("score").GetInt32();
-                        words[i].CorrectedTranslation = result.GetProperty("correctedTranslation").GetString() ?? "";
-                        words[i].Explanation = result.GetProperty("explanation").GetString() ?? "";
+                        
+                        // 清理修正翻译和解释中的 markdown 格式
+                        var correctedTranslation = result.GetProperty("correctedTranslation").GetString() ?? "";
+                        words[i].CorrectedTranslation = TextCleaner.RemoveMarkdownFormatting(correctedTranslation);
+                        
+                        var explanation = result.GetProperty("explanation").GetString() ?? "";
+                        words[i].Explanation = TextCleaner.RemoveMarkdownFormatting(explanation);
                     }
                 }
                 return words;
@@ -428,6 +448,7 @@ Requirements:
 3. The article should be well-structured with paragraphs.
 4. Use appropriate IELTS-level vocabulary and expressions.
 5. The content should be informative and engaging.
+6. IMPORTANT: Do NOT use markdown formatting (no **, no *, no bold, no italic) in the article content. Use plain text only.
 
 Return the response as a valid JSON object with the following keys:
 - ""title"": the article title (in English)
@@ -455,8 +476,8 @@ Example format:
                 using (JsonDocument doc = JsonDocument.Parse(cleanedJson))
                 {
                     JsonElement root = doc.RootElement;
-                    article.Title = root.GetProperty("title").GetString() ?? "";
-                    article.Content = root.GetProperty("content").GetString() ?? "";
+                    article.Title = TextCleaner.RemoveMarkdownFormatting(root.GetProperty("title").GetString() ?? "");
+                    article.Content = TextCleaner.RemoveMarkdownFormatting(root.GetProperty("content").GetString() ?? "");
                 }
             }
             catch (JsonException ex)
@@ -492,7 +513,7 @@ Article:
             string translationResponse = await CallGeminiApiAsync(translationPrompt);
             if (!translationResponse.StartsWith("Error:"))
             {
-                article.Translation = translationResponse.Trim();
+                article.Translation = TextCleaner.RemoveMarkdownFormatting(translationResponse.Trim());
             }
 
             // 更新进度：翻译完成，开始提取词汇
@@ -511,6 +532,12 @@ For each word, provide:
 - Accurate phonetics in American English pronunciation (IPA format, US pronunciation)
 - Chinese definition (including part of speech and comprehensive meaning)
 - An example sentence from the article or a similar context
+
+IMPORTANT FORMATTING RULES:
+- Do NOT use markdown formatting (no **, no *, no bold, no italic) in sentences
+- Write example sentences in plain text only
+- Do NOT highlight or emphasize the vocabulary word in the sentence
+- Use the word naturally in the sentence without any special formatting
 
 Return the response as a valid JSON array. Each object in the array must have the following keys: ""word"", ""phonetics"", ""definition"", ""sentence"".
 
@@ -537,6 +564,19 @@ REMEMBER: Use American English (US) pronunciation for all phonetics.";
                 {
                     var cleanedJson = CleanJsonResponse(keyWordsResponse);
                     var words = JsonSerializer.Deserialize<List<VocabularyWord>>(cleanedJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    
+                    if (words != null)
+                    {
+                        // 清理所有句子中的 markdown 格式标记
+                        foreach (var word in words)
+                        {
+                            if (!string.IsNullOrWhiteSpace(word.Sentence))
+                            {
+                                word.Sentence = TextCleaner.CleanSentence(word.Sentence);
+                            }
+                        }
+                    }
+                    
                     article.KeyWords = words ?? new List<VocabularyWord>();
                 }
                 catch (JsonException ex)
