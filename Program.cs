@@ -40,6 +40,93 @@ namespace IELTS_Learning_Tool
             Console.WriteLine();
             return password.ToString();
         }
+        
+        // 读取用户输入（支持中文，正确处理多字节字符的删除）
+        private static string ReadUserInput()
+        {
+            var input = new StringBuilder();
+            var inputChars = new List<char>(); // 用于存储实际输入的字符
+            
+            while (true)
+            {
+                var keyInfo = Console.ReadKey(true);
+                
+                if (keyInfo.Key == ConsoleKey.Enter)
+                {
+                    Console.WriteLine();
+                    break;
+                }
+                else if (keyInfo.Key == ConsoleKey.Backspace)
+                {
+                    if (inputChars.Count > 0)
+                    {
+                        // 移除最后一个字符
+                        char lastChar = inputChars[inputChars.Count - 1];
+                        inputChars.RemoveAt(inputChars.Count - 1);
+                        input.Remove(input.Length - 1, 1);
+                        
+                        // 根据字符类型移动光标并清除
+                        if (IsWideChar(lastChar))
+                        {
+                            // 中文字符等宽字符，需要移动2个位置并清除
+                            Console.Write("\b\b  \b\b");
+                        }
+                        else
+                        {
+                            // ASCII字符，移动1个位置并清除
+                            Console.Write("\b \b");
+                        }
+                    }
+                }
+                else if (!char.IsControl(keyInfo.KeyChar) && keyInfo.KeyChar != '\0')
+                {
+                    // 处理输入字符（排除控制字符）
+                    char ch = keyInfo.KeyChar;
+                    
+                    inputChars.Add(ch);
+                    input.Append(ch);
+                    Console.Write(ch);
+                }
+            }
+            
+            return input.ToString();
+        }
+        
+        // 判断字符是否是宽字符（中文字符等）
+        private static bool IsWideChar(char c)
+        {
+            // 中文字符范围
+            if (c >= 0x4E00 && c <= 0x9FFF) // CJK统一汉字
+                return true;
+            if (c >= 0x3400 && c <= 0x4DBF) // CJK扩展A
+                return true;
+            if (c >= 0x20000 && c <= 0x2A6DF) // CJK扩展B
+                return true;
+            if (c >= 0x2A700 && c <= 0x2B73F) // CJK扩展C
+                return true;
+            if (c >= 0x2B740 && c <= 0x2B81F) // CJK扩展D
+                return true;
+            if (c >= 0x2B820 && c <= 0x2CEAF) // CJK扩展E
+                return true;
+            if (c >= 0xF900 && c <= 0xFAFF) // CJK兼容汉字
+                return true;
+            if (c >= 0x2F800 && c <= 0x2FA1F) // CJK兼容扩展
+                return true;
+            
+            // 日文、韩文字符也是宽字符
+            if (c >= 0x3040 && c <= 0x309F) // 平假名
+                return true;
+            if (c >= 0x30A0 && c <= 0x30FF) // 片假名
+                return true;
+            if (c >= 0xAC00 && c <= 0xD7AF) // 韩文音节
+                return true;
+            
+            // 全角字符
+            if (c >= 0xFF00 && c <= 0xFFEF)
+                return true;
+            
+            return false;
+        }
 
         static async Task Main(string[] args)
         {
@@ -169,7 +256,7 @@ namespace IELTS_Learning_Tool
                 Console.ResetColor();
 
                 Console.Write("\nYour translation: ");
-                string userInput = Console.ReadLine()?.Trim() ?? "";
+                string userInput = ReadUserInput().Trim();
                 if (userInput.Equals("Pass", StringComparison.OrdinalIgnoreCase))
                 {
                     word.IsSkipped = true;
